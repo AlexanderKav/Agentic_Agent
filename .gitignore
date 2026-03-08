@@ -1,0 +1,8 @@
+# Ignore Python cache
+__pycache__/
+
+# Ignore environment file
+.env
+
+# Ignore credentials
+agentic-analyst-489012-a0aa86d33643.json
