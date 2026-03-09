@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from agents.insight_agent import make_json_safe  # import the JSON-safe helper
 
 class AutonomousAnalyst:
