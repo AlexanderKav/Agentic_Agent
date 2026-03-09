@@ -16,7 +16,7 @@ import json
 load_dotenv()
 
 # -------------------------
-# 1️⃣ Load and clean data
+# Load and clean data
 # -------------------------
 SHEET_ID = os.getenv('SHEET_ID')
 connector = GoogleSheetsConnector(sheet_id=SHEET_ID)
@@ -36,19 +36,19 @@ print("\nCleaned DataFrame (head):")
 print(clean_df.head())
 
 # -------------------------
-# 2️⃣ Initialize Agents
+# Initialize Agents
 # -------------------------
 analytics = AnalyticsAgent(clean_df)
 planner = PlannerAgent()
 insight_agent = InsightAgent()
 viz_agent = VisualizationAgent()
 # -------------------------
-# 3️⃣ Define Autonomous Analyst (LangGraph)
+# Define Autonomous Analyst (LangGraph)
 # -------------------------
 
 
 # -------------------------
-# 4️⃣ Run the workflow
+# Run the workflow
 # -------------------------
 autonomous_analyst = AutonomousAnalyst(planner, analytics, insight_agent, viz_agent)
 
@@ -63,7 +63,7 @@ print(question)
 raw_plan, plan, results, raw_insights, insights = autonomous_analyst.run(question)
 
 # -------------------------
-# 5️⃣ Display outputs
+# Display outputs
 # -------------------------
 print("\nRAW PLAN:")
 print(raw_plan)
