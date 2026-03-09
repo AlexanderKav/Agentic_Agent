@@ -169,12 +169,16 @@ class AnalyticsAgent:
     # -----------------------------
     # Monthly revenue per customer
     # -----------------------------
-    def monthly_revenue_by_customer(self):
+    def monthly_revenue_by_customer(self, months_to_check=6):
         """
-        Returns a dictionary with revenue per customer per month.
+        Returns a dictionary with revenue per customer per month and monthly decline info.
         Format:
         {
-            "Customer A": {"2024-01": 1200.0, "2024-02": 1100.0, ...},
+            "Customer A": {
+                "monthly_revenue": {"2024-01": 1200.0, "2024-02": 1100.0, ...},
+                "declining": True,   # True if revenue decreased over last `months_to_check`
+                "trend": [1200.0, 1100.0, ...]  # list of last N months revenue for trend analysis
+            },
             "Customer B": {...},
             ...
         }
@@ -182,14 +186,29 @@ class AnalyticsAgent:
 
         if "customer" not in self.df.columns:
             return {}
-        
+
         df_monthly = self.df.copy()
-        df_monthly["customer"] = df_monthly["customer"].replace("", "Unknown Customer")  # remove empty customer names
+        df_monthly["customer"] = df_monthly["customer"].replace("", "Unknown Customer")
         df_monthly["month"] = df_monthly["date"].dt.to_period("M")
         grouped = df_monthly.groupby(["customer", "month"])["revenue"].sum().reset_index()
 
         result = {}
+
         for customer, group in grouped.groupby("customer"):
-            result[customer] = {str(row["month"]): float(np.floor(row["revenue"])) for _, row in group.iterrows()}
+            # Sort months ascending
+            group = group.sort_values("month")
+            monthly_dict = {str(row["month"]): float(np.floor(row["revenue"])) for _, row in group.iterrows()}
+
+            # Take last `months_to_check` months
+            last_months = list(monthly_dict.values())[-months_to_check:]
+
+            # Determine if declining trend: simple check if each month <= previous month
+            declining = all(earlier >= later for earlier, later in zip(last_months, last_months[1:])) if len(last_months) > 1 else False
+
+            result[customer] = {
+                "monthly_revenue": monthly_dict,
+                "trend": last_months,
+                "declining": declining
+            }
 
         return result

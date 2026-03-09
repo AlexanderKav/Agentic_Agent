@@ -18,15 +18,19 @@ load_dotenv()
 # -------------------------
 # 1️⃣ Load and clean data
 # -------------------------
-SHEET_ID = "1jFclH0ypLs5aTIGtz_2AJjToauVV_dARvde9tEQ0TQU"
+SHEET_ID = os.getenv('SHEET_ID')
 connector = GoogleSheetsConnector(sheet_id=SHEET_ID)
 raw_df = connector.fetch_sheet()
 
 mapper = SchemaMapper(raw_df)
-clean_df, mapping = mapper.map_schema()
+clean_df, mapping, warnings = mapper.map_schema()
 
 print("Column Mapping:")
 print(mapping)
+if warnings:
+    print("Warnings during mapping:")
+    for w in warnings:
+        print("-", w)
 
 print("\nCleaned DataFrame (head):")
 print(clean_df.head())

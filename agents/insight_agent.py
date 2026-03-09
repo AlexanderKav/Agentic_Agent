@@ -3,6 +3,51 @@ import json
 import re
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+import numpy as np
+import pandas as pd
+
+
+def make_json_safe(obj):
+        """Recursively convert all objects to JSON-serializable types."""
+        if isinstance(obj, dict):
+            return {str(k): make_json_safe(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [make_json_safe(x) for x in obj]
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
+        elif isinstance(obj, (pd.Timestamp, pd.Timedelta)):
+            return str(obj)
+        elif obj is None:
+            return None
+        else:
+            return obj
+
+
+def extract_json_from_text(text):
+    """Extract first JSON block from text safely."""
+    match = re.search(r'\{.*\}', text, flags=re.DOTALL)
+    if not match:
+        return {}
+
+    json_text = match.group()
+
+    # Remove trailing commas before } or ]
+    json_text = re.sub(r',\s*([}\]])', r'\1', json_text)
+
+    try:
+        return json.loads(json_text)
+    except json.JSONDecodeError:
+        # Wrap unquoted keys and simple values in quotes
+        json_text = re.sub(r'([a-zA-Z0-9_ ]+):', r'"\1":', json_text)  # keys
+        json_text = re.sub(r'([\[,\{]\s*)([A-Za-z][^"\{\}\[\],]+)(\s*[,}\]])', r'\1"\2"\3', json_text)  # values
+        try:
+            return json.loads(json_text)
+        except Exception:
+            print("Warning: unable to parse AI JSON safely.")
+            return {}
+
 
 class InsightAgent:
 
@@ -47,127 +92,26 @@ Return ONLY valid JSON, nothing else, in this format:
 }}
 """)
 
-    # -----------------------------
-    # Helper to extract first JSON block
-    # -----------------------------
-    def _extract_first_json_block(self, text: str):
-        start = text.find("{")
-        if start == -1:
-            return None
-
-        bracket_count = 0
-        for i, c in enumerate(text[start:], start):
-            if c == "{":
-                bracket_count += 1
-            elif c == "}":
-                bracket_count -= 1
-            if bracket_count == 0:
-                return text[start:i+1]
-        return None
-
-    # -----------------------------
-    # Sanitize JSON-like text
-    # -----------------------------
-    def _sanitize_json_like_string(self, raw_text):
-        # Wrap patterns like '33.67% in June 2024' in quotes
-        raw_text = re.sub(r'[-+]?\d+(\.\d+)?%? in [A-Za-z0-9\s]+', lambda m: f'"{m.group(0)}"', raw_text)
-
-        # Wrap unquoted words after : (e.g., profit: High) in quotes
-        raw_text = re.sub(r'(:\s*)([A-Za-z][A-Za-z0-9 _]+)(\s*[,}])', r'\1"\2"\3', raw_text)
-
-        # Remove trailing commas before } or ]
-        raw_text = re.sub(r',(\s*[}\]])', r'\1', raw_text)
-
-        return raw_text
-
-    # -----------------------------
-    # Generate insights
-    # -----------------------------
     def generate_insights(self, data, question="General business insights"):
         try:
-            # Convert pandas DataFrame to dict if needed
+            # Convert tool results to JSON-safe dict
             if hasattr(data, "to_dict"):
                 data_dict = data.to_dict(orient="records")
             else:
-                data_dict = data
+                data_dict = make_json_safe(data)
 
+            data_dict = make_json_safe(data_dict)
             data_json = json.dumps(data_dict, indent=2, default=str)
-            messages = self.prompt.format_messages(data=data_json, question=question)
 
+            messages = self.prompt.format_messages(data=data_json, question=question)
             response = self.llm.invoke(messages)
             raw = response.content
 
             # Extract JSON safely
-            json_str = self._extract_first_json_block(raw)
-            if json_str:
-                json_str = self._sanitize_json_like_string(json_str)
-                try:
-                    parsed_json = json.loads(json_str)
-                except json.JSONDecodeError as e:
-                    print("Warning: JSON parse failed:", e)
-                    parsed_json = {}
-            else:
-                parsed_json = {}
+            parsed_json = extract_json_from_text(raw)
 
             return raw, parsed_json
 
         except Exception as e:
             print("Error in InsightAgent.generate_insights:", e)
             return "", {}
-'''
-    import os
-import json
-import re
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-
-
-class InsightAgent:
-
-    def __init__(self):
-        self.llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.2,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
-
-        # Prompt with escaped braces for JSON
-        self.prompt = ChatPromptTemplate.from_template("""
-You are a senior AI business analyst.
-
-Analyze the following structured business data.
-
-{data}
-
-Your tasks:
-1. Identify key revenue or profit trends
-2. Highlight anomalies or unusual patterns
-3. Suggest additional metrics worth analyzing
-
-Return ONLY valid JSON, nothing else, in this format:
-
-{{
-"key_trends": {{}},
-"anomalies": {{}},
-"suggested_metrics_to_analyze": {{}}
-}}
-""")
-
-    def generate_insights(self, data):
-
-        # If Pandas DataFrame, convert to dict first
-        if hasattr(data, "to_dict"):
-            data_json = json.dumps(data.to_dict(orient="records"), indent=2, default=str)
-        else:
-            data_json = json.dumps(data, indent=2, default=str)  # already dict
-
-        messages = self.prompt.format_messages(data=data_json)
-        response = self.llm.invoke(messages)
-        raw = response.content
-
-        # Extract JSON safely
-        match = re.search(r'\{.*\}', raw, flags=re.DOTALL)
-        parsed_json = json.loads(match.group()) if match else None
-
-        return raw, parsed_json
-'''
