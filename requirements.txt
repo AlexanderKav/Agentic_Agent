@@ -44,6 +44,7 @@ httpx-sse==0.4.3
 hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1737618333194/work
 idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1760286409563/work
 importlib_resources @ file:///home/conda/feedstock_root/build_artifacts/importlib_resources_1736252299705/work
+iniconfig==2.3.0
 Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jinja2_1764517220/work
 jiter==0.13.0
 joblib @ file:///home/conda/feedstock_root/build_artifacts/joblib_1765794027227/work
@@ -83,6 +84,7 @@ pandas @ file:///D:/bld/bld/rattler-build_pandas_1771409014/work
 patsy==1.0.2
 pillow @ file:///D:/bld/bld/rattler-build_pillow_1758208682/work
 plotly @ file:///home/conda/feedstock_root/build_artifacts/plotly_1768442375981/work
+pluggy==1.6.0
 polars @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_polars_1770417396/work/polars-python
 polars-runtime-32==1.38.1
 portalocker==3.2.0
@@ -101,6 +103,7 @@ pydantic_core @ file:///D:/bld/bld/rattler-build_pydantic-core_1762989037/work
 Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1750615794071/work
 pyparsing @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_pyparsing_1769003998/work
 PySide6==6.9.2
+pytest==9.0.2
 python-dateutil @ file:///C:/b/abs_3au_koqnbs/croot/python-dateutil_1716495777160/work
 python-dotenv @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dotenv_1772388605/work
 python-multipart @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-multipart_1769356329/work
