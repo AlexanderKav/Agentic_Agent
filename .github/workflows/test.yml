@@ -12,6 +12,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
+      fail-fast: false
 
     steps:
     - uses: actions/checkout@v4
@@ -21,57 +22,66 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-xdist
+        pip install pytest pytest-cov pytest-xdist pytest-html pytest-benchmark
     
-    - name: Create necessary directories
+    - name: Install package in development mode
+      run: pip install -e .
+    
+    - name: Set environment variables for testing
       run: |
-        mkdir -p htmlcov
+        echo "OPENAI_API_KEY=dummy-key-for-testing" >> $GITHUB_ENV
+        echo "AUDIT_SECRET_KEY=test-secret-key" >> $GITHUB_ENV
+    
+    - name: Create test directories
+      run: |
         mkdir -p test-results
+        mkdir -p .pytest_cache
     
-    - name: List directory structure
+    - name: Run environment test first
       run: |
-        echo "=== Current directory ==="
-        pwd
-        echo "=== Files in root ==="
-        ls -la
-        echo "=== tests directory ==="
-        ls -la tests/ || echo "tests/ not found"
-        echo "=== tests/unit directory ==="
-        ls -la tests/unit/ || echo "tests/unit/ not found"
+        pytest tests/test_environment.py -v
     
-    - name: Run unit tests with detailed output
+    - name: Run unit tests with coverage
       run: |
-        pytest tests/unit -v --tb=long -s --maxfail=1
-      continue-on-error: true
+        pytest tests/unit \
+          -v \
+          --cov=agents \
+          --cov-report=xml:coverage.xml \
+          --cov-report=html:htmlcov \
+          --junit-xml=test-results/unit-results.xml \
+          -n auto
     
-    - name: Run integration tests with detailed output
+    - name: Run integration tests
       run: |
-        pytest tests/integration -v --tb=long -s --maxfail=1
-      continue-on-error: true
+        pytest tests/integration \
+          -v \
+          --cov=agents \
+          --cov-append \
+          --cov-report=xml:coverage.xml \
+          --cov-report=html:htmlcov \
+          --junit-xml=test-results/integration-results.xml \
+          -n auto
     
-    - name: Check exit status
-      run: |
-        echo "Unit test exit code: ${{ job.steps.run-unit-tests.outcome }}"
-        echo "Integration test exit code: ${{ job.steps.run-integration-tests.outcome }}"
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
     
-    - name: Upload test logs
+    - name: Archive test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: pytest-logs-${{ matrix.python-version }}
+        name: test-results-${{ matrix.python-version }}
         path: |
-          .pytest_cache/
+          htmlcov/
           test-results/
-        retention-days: 7
+          coverage.xml
+          .pytest_cache/
+        retention-days: 30
