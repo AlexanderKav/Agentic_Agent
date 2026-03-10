@@ -12,76 +12,30 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
-      fail-fast: false
 
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: Set up conda
+      uses: conda-incubator/setup-miniconda@v3
       with:
+        auto-update-conda: true
         python-version: ${{ matrix.python-version }}
+        environment-file: environment.yml
+        activate-environment: agentic-analyst
     
-    - name: Install dependencies
+    - name: Run tests
+      shell: bash -l {0}
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-xdist pytest-html pytest-benchmark
+        pytest tests/unit -v
+        pytest tests/integration -v
     
-    - name: Install package in development mode
-      run: pip install -e .
-    
-    - name: Set environment variables for testing
-      run: |
-        echo "OPENAI_API_KEY=dummy-key-for-testing" >> $GITHUB_ENV
-        echo "AUDIT_SECRET_KEY=test-secret-key" >> $GITHUB_ENV
-    
-    - name: Create test directories
-      run: |
-        mkdir -p test-results
-        mkdir -p .pytest_cache
-    
-    - name: Run environment test first
-      run: |
-        pytest tests/test_environment.py -v
-    
-    - name: Run unit tests with coverage
-      run: |
-        pytest tests/unit \
-          -v \
-          --cov=agents \
-          --cov-report=xml:coverage.xml \
-          --cov-report=html:htmlcov \
-          --junit-xml=test-results/unit-results.xml \
-          -n auto
-    
-    - name: Run integration tests
-      run: |
-        pytest tests/integration \
-          -v \
-          --cov=agents \
-          --cov-append \
-          --cov-report=xml:coverage.xml \
-          --cov-report=html:htmlcov \
-          --junit-xml=test-results/integration-results.xml \
-          -n auto
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-    
-    - name: Archive test results
+    - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results-${{ matrix.python-version }}
         path: |
-          htmlcov/
-          test-results/
-          coverage.xml
           .pytest_cache/
+          test-results/
         retention-days: 30
