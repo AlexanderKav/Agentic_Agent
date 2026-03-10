@@ -62,6 +62,7 @@ if question is None or question.strip() == "":
 print(question)
 raw_plan, plan, results, raw_insights, insights = autonomous_analyst.run(question)
 
+
 # -------------------------
 # Display outputs
 # -------------------------
