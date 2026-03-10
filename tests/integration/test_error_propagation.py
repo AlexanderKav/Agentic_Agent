@@ -135,8 +135,7 @@ class TestErrorPropagation:
             # If it raises, make sure it's the expected exception
             assert "LLM API Error" in str(e)
     
-    def test_partial_tool_failure(self, sample_transaction_data, temp_chart_dir,
-                                   mock_planner_responses, mock_insight_responses):
+    def test_partial_tool_failure(self, sample_transaction_data, temp_chart_dir):
         """Test when some tools fail but others succeed"""
         analytics = AnalyticsAgent(sample_transaction_data)
         
@@ -150,15 +149,39 @@ class TestErrorPropagation:
         
         analytics.run_tool = failing_run_tool
         
-        planner = mock_planner_responses["forecast"]
-        insight = mock_insight_responses["forecast_answer"]
-        viz = VisualizationAgent(output_dir=temp_chart_dir)
-        
-        system = AutonomousAnalyst(planner, analytics, insight, viz)
-        
-        # This should propagate the exception
-        with pytest.raises(Exception, match="Forecast failed"):
-            system.run("analyze this")
+        with patch('agents.planner_agent.ChatOpenAI'), \
+            patch('agents.insight_agent.ChatOpenAI'):
+            
+            planner = PlannerAgent()
+            insight = InsightAgent()
+            viz = VisualizationAgent(output_dir=temp_chart_dir)
+            
+            # Mock planner to include failing tool
+            planner.create_plan = MagicMock(return_value=(
+                "Raw plan",
+                {"plan": ["compute_kpis", "forecast_revenue", "visualization"]}
+            ))
+            
+            # Mock insight
+            insight.generate_insights = MagicMock(return_value=(
+                {"raw": "insights"},
+                "Analysis complete despite forecast failure."
+            ))
+            
+            system = AutonomousAnalyst(planner, analytics, insight, viz)
+            
+            # The system should handle the error gracefully
+            raw_plan, plan, results, raw_insights, insights = system.run("analyze this")
+            
+            # Verify that:
+            # 1. Successful tools still work
+            assert "compute_kpis" in results
+            # 2. Failed tool has error info
+            assert "forecast_revenue" in results
+            assert "error" in results["forecast_revenue"]
+            assert "Forecast failed" in results["forecast_revenue"]["error"]
+            # 3. System still returns insights
+            assert insights is not None
     
     def test_viz_agent_handles_empty_results(self, temp_chart_dir):
         """Test visualization agent handles empty results gracefully"""
