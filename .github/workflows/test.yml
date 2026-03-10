@@ -16,26 +16,18 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up conda
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
       with:
-        auto-update-conda: true
         python-version: ${{ matrix.python-version }}
-        environment-file: environment.yml
-        activate-environment: agentic-analyst
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov pytest-xdist pytest-html pytest-benchmark
     
     - name: Run tests
-      shell: bash -l {0}
       run: |
         pytest tests/unit -v
         pytest tests/integration -v
-    
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results-${{ matrix.python-version }}
-        path: |
-          .pytest_cache/
-          test-results/
-        retention-days: 30
