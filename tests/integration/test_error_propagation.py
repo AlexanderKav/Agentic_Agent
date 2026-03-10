@@ -18,7 +18,7 @@ from ..fixtures.sample_data import (
     sample_transaction_data, bad_data, empty_data, 
     missing_columns_data, temp_chart_dir
 )
-from fixtures.mock_responses import mock_planner_responses, mock_insight_responses
+from ..fixtures.mock_responses import mock_planner_responses, mock_insight_responses
 
 
 class TestErrorPropagation:
