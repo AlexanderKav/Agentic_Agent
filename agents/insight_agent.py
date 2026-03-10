@@ -27,26 +27,38 @@ def make_json_safe(obj):
 
 def extract_json_from_text(text):
     """Extract first JSON block from text safely."""
+    import re
+    import json
+    
+    # Try to find JSON block
     match = re.search(r'\{.*\}', text, flags=re.DOTALL)
     if not match:
+        print("No JSON pattern found in text")
         return {}
 
     json_text = match.group()
-
+    
     # Remove trailing commas before } or ]
     json_text = re.sub(r',\s*([}\]])', r'\1', json_text)
 
     try:
+        # First try: direct parse
         return json.loads(json_text)
     except json.JSONDecodeError:
-        # Wrap unquoted keys and simple values in quotes
-        json_text = re.sub(r'([a-zA-Z0-9_ ]+):', r'"\1":', json_text)  # keys
-        json_text = re.sub(r'([\[,\{]\s*)([A-Za-z][^"\{\}\[\],]+)(\s*[,}\]])', r'\1"\2"\3', json_text)  # values
         try:
+            # Second try: fix unquoted keys
+            # Add quotes around keys
+            json_text = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_text)
             return json.loads(json_text)
-        except Exception:
-            print("Warning: unable to parse AI JSON safely.")
-            return {}
+        except json.JSONDecodeError:
+            try:
+                # Third try: fix unquoted string values
+                json_text = re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])', r':"\1"\2', json_text)
+                return json.loads(json_text)
+            except json.JSONDecodeError as e:
+                print(f"Warning: unable to parse AI JSON safely. Error: {e}")
+                print(f"Problematic JSON text: {json_text[:200]}...")
+                return {}
 
 
 class InsightAgent:
@@ -107,11 +119,28 @@ Return ONLY valid JSON, nothing else, in this format:
             response = self.llm.invoke(messages)
             raw = response.content
 
+            print("\nRAW INSIGHT RESPONSE:")
+            print(raw)
+            print()
+
             # Extract JSON safely
             parsed_json = extract_json_from_text(raw)
+            
+            # If parsing failed but we have raw text, try to create a simple response
+            if not parsed_json and raw:
+                # Create a minimal valid response
+                parsed_json = {
+                    "answer": raw[:500],  # First 500 chars as answer
+                    "supporting_insights": {},
+                    "anomalies": {},
+                    "recommended_metrics": {},
+                    "human_readable_summary": raw[:200]
+                }
 
             return raw, parsed_json
 
         except Exception as e:
             print("Error in InsightAgent.generate_insights:", e)
+            import traceback
+            traceback.print_exc()
             return "", {}
