@@ -14,15 +14,15 @@ jobs:
         python-version: ["3.10", "3.11"]
 
     steps:
-    - uses: actions/checkout@v4  # Updated to v4
+    - uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5  # Updated to v5
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
     
     - name: Cache dependencies
-      uses: actions/cache@v4  # Updated to v4
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -35,27 +35,44 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-cov pytest-xdist
     
+    - name: Create necessary directories
+      run: |
+        mkdir -p htmlcov
+        mkdir -p test-results
+    
     - name: Run unit tests
       run: |
-        pytest tests/unit -v --cov=agents --cov-report=xml --cov-report=html -n auto
+        pytest tests/unit -v --cov=agents --cov-report=xml --cov-report=html --junit-xml=test-results/unit-results.xml -n auto
+      continue-on-error: false
     
     - name: Run integration tests
       run: |
-        pytest tests/integration -v --cov=agents --cov-append --cov-report=xml --cov-report=html -n auto
+        pytest tests/integration -v --cov=agents --cov-append --cov-report=xml --cov-report=html --junit-xml=test-results/integration-results.xml -n auto
+      continue-on-error: false
+    
+    - name: List generated files (debug)
+      run: |
+        ls -la htmlcov/ || echo "htmlcov directory empty"
+        ls -la test-results/ || echo "test-results directory empty"
+        ls -la coverage.xml || echo "coverage.xml not found"
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4  # Updated to v4
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
         fail_ci_if_error: false
+      continue-on-error: true
     
     - name: Archive test results
-      uses: actions/upload-artifact@v4  # Updated to v4
-      if: always()
+      uses: actions/upload-artifact@v4
+      if: always()  # Always upload even if tests fail
       with:
         name: test-results-${{ matrix.python-version }}
         path: |
           htmlcov/
-          test-results.xml
+          test-results/
+          coverage.xml
+        retention-days: 30
+        if-no-files-found: warn  # Warn instead of error if no files
