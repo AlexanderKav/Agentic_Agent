@@ -18,7 +18,7 @@ class SchemaMapper:
         "currency": ["currency", "curr"],
         "quantity": ["quantity", "qty", "units"],
         "payment_status": ["payment_status", "status", "payment"],
-        "notes": ["notes", "comment", "remarks"]
+        "notes": ["notes", "comment", "remarks", "note", "comments", "description"],
     }
     
     # Common currency codes and their symbols
@@ -78,22 +78,29 @@ class SchemaMapper:
         mapping = {}
         new_columns = {}
         warnings = []
+        used_standards = set()  # Track which standard columns have been used
 
         for col in self.df.columns:
             lower_col = col.lower().strip()
             matched = False
 
             for standard, variants in self.STANDARD_SCHEMA.items():
+                # Skip if this standard column already has a mapping
+                if standard in used_standards:
+                    continue
+                    
                 # Exact match
                 if lower_col in variants:
                     mapping[col] = standard
                     new_columns[col] = standard
+                    used_standards.add(standard)
                     matched = True
                     break
                 # Fuzzy match
                 elif difflib.get_close_matches(lower_col, variants, n=1, cutoff=0.8):
                     mapping[col] = standard
                     new_columns[col] = standard
+                    used_standards.add(standard)
                     matched = True
                     break
 
@@ -101,20 +108,18 @@ class SchemaMapper:
                 warnings.append(col)
 
         df_clean = self.df.rename(columns=new_columns)
-        self.conversion_stats['total_rows'] = len(df_clean)
 
         # Add missing standard columns with default None
         for standard_col in self.STANDARD_SCHEMA.keys():
             if standard_col not in df_clean.columns:
                 df_clean[standard_col] = None
-                if standard_col == 'currency':
-                    # If no currency column, assume USD
+                if standard_col == 'currency' and 'currency' not in used_standards:
                     df_clean['currency'] = 'USD'
-                    warnings.append("No currency column found - assuming all values are in USD")
+                    warnings.append("Currency column added with default: USD")
                 else:
                     warnings.append(f"Missing column added: {standard_col}")
 
-        # Perform currency conversion to USD
+        # Perform currency conversion
         df_clean = self._convert_to_usd(df_clean, warnings)
 
         return df_clean, mapping, warnings
@@ -134,15 +139,32 @@ class SchemaMapper:
         
         # Helper function to clean currency strings
         def clean_currency_value(val):
-            """Convert string currency to float"""
+            """Convert string currency to float, handling both US and European formats"""
             if pd.isna(val):
                 return None
             if isinstance(val, (int, float)):
                 return float(val)
             if isinstance(val, str):
-                # Remove currency symbols, commas, and spaces
-                import re
-                cleaned = re.sub(r'[$€£¥₹,\s]', '', val)
+                # Remove currency symbols and spaces
+                cleaned = re.sub(r'[$€£¥₹\s]', '', val)
+                
+                # Handle European format (1.234,56 -> 1234.56)
+                if ',' in cleaned and '.' in cleaned:
+                    # If both present, assume US format with commas as thousand separators
+                    if cleaned.rindex('.') > cleaned.rindex(','):
+                        # US format: 1,234.56 -> remove commas
+                        cleaned = cleaned.replace(',', '')
+                    else:
+                        # European format: 1.234,56 -> replace . with '' and , with .
+                        cleaned = cleaned.replace('.', '').replace(',', '.')
+                elif ',' in cleaned:
+                    # Check if it's European (1,23) or US thousand separator (1,234)
+                    if len(cleaned.split(',')[-1]) == 2:  # European: 1,23
+                        cleaned = cleaned.replace(',', '.')
+                    else:  # US thousand separator: 1,234
+                        cleaned = cleaned.replace(',', '')
+                # If only dots, assume decimal separator
+                
                 try:
                     return float(cleaned)
                 except ValueError:
