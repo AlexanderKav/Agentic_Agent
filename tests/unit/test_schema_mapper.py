@@ -275,29 +275,21 @@ class TestSchemaMapping:
 class TestCurrencyConversion:
     """Test currency conversion functionality"""
     
-    def test_currency_conversion_to_usd(self, sample_data_with_currencies):
-        """Test conversion of various currencies to USD"""
-        mapper = SchemaMapper(sample_data_with_currencies)
+    def test_no_currency_column_assumes_usd(self, sample_data_no_currency_column):
+        """Test that missing currency column assumes USD"""
+        mapper = SchemaMapper(sample_data_no_currency_column)
         df_clean, mapping, warnings = mapper.map_schema()
         
-        # Check that revenue was converted
-        assert 'revenue_original' in df_clean.columns
-        assert 'revenue_original_currency' in df_clean.columns
+        # Currency column should be added with USD
+        assert 'currency' in df_clean.columns
+        assert (df_clean['currency'] == 'USD').all()
         
-        # USD amount should remain same
-        usd_mask = df_clean['currency'] == 'USD'
-        assert df_clean.loc[usd_mask, 'revenue'].iloc[0] == 8748.0
+        # Revenue should remain unchanged
+        assert df_clean['revenue'].iloc[0] == 8748.0
+        assert df_clean['revenue'].iloc[1] == 2417.0
         
-        # EUR should be converted (2417 * 1.18 = 2852.06)
-        eur_mask = df_clean['currency'] == 'EUR'
-        assert round(df_clean.loc[eur_mask, 'revenue'].iloc[0], 2) == 2852.06
-        
-        # JPY should be converted (880100 * 0.0091 = 8008.91)
-        jpy_mask = df_clean['currency'] == 'JPY'
-        assert round(df_clean.loc[jpy_mask, 'revenue'].iloc[0], 2) == 8008.91
-        
-        # Check warnings
-        assert any("Revenue converted to USD from: EUR" in w for w in warnings)
+        # For data with NO currency column, expect this warning
+        assert "Currency column added with default: USD" in warnings
     
     def test_conversion_with_cost(self, sample_data_with_cost):
         """Test conversion of both revenue and cost"""
@@ -377,32 +369,21 @@ class TestConversionStats:
         mapper = SchemaMapper(sample_data_with_currencies)
         df_clean, mapping, warnings = mapper.map_schema()
         
-        # Print debug info
-        print("\nDataFrame shape:", df_clean.shape)
-        print("Columns:", df_clean.columns.tolist())
-        print("\nWarnings:", warnings)
-        
         stats = mapper.get_conversion_summary()
-        print("\nStats:", stats)
+        
+        print("\n=== DEBUG STATS ===")
+        print("Stats:", stats)
+        print("Warnings:", warnings)
+        print("==================\n")
         
         assert stats['target_currency'] == 'USD'
+        assert stats['total_rows'] == len(sample_data_with_currencies)  # Should be 5
+        assert 'USD' in stats['currencies_found']
+        assert 'EUR' in stats['currencies_found']
+        assert 'JPY' in stats['currencies_found']
         
-        # total_rows might be 0 if conversion didn't happen
-        # Instead of asserting exact number, check that it's >= 0
-        assert stats['total_rows'] >= 0
-        
-        # If total_rows is 0, conversion didn't happen - check why
-        if stats['total_rows'] == 0:
-            # Check if revenue column exists
-            assert 'revenue' in df_clean.columns
-            # Check if currency column exists
-            assert 'currency' in df_clean.columns
-            # Check for conversion-related warnings
-            conversion_warnings = [w for w in warnings if 'converted' in w.lower()]
-            assert len(conversion_warnings) > 0, "No conversion warnings found"
-        else:
-            assert stats['rows_converted'] >= 0
-            assert 'USD' in stats['currencies_found']
+        # Check that conversion happened
+        assert stats['rows_converted'] > 0
     
     def test_conversion_errors_tracking(self, sample_data_with_currencies):
         """Test tracking of conversion errors"""

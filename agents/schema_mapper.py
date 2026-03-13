@@ -126,6 +126,8 @@ class SchemaMapper:
 
     def _convert_to_usd(self, df, warnings):
         """Convert all non-USD revenue and cost columns to USD"""
+
+        self.conversion_stats['total_rows'] = len(df)
         
         # Ensure currency column exists and is normalized
         if 'currency' in df.columns:
