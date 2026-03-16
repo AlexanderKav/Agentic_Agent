@@ -12,6 +12,7 @@ class DataLoader:
     def __init__(self):
         self.sources = {
             'csv': self._load_csv,
+            'excel': self._load_excel,  # Add this line
             'google_sheets': self._load_sheets,
             'database': self._load_database
         }
@@ -36,6 +37,20 @@ class DataLoader:
             connector = CSVConnector(path)
         return connector.fetch_data()
     
+    def _load_excel(self, config):
+        """Load from Excel file"""
+        if isinstance(config, str):
+            # Simple string path
+            from .excel_connector import ExcelConnector  # You'll need this
+            connector = ExcelConnector(config)
+        else:
+            # Dict with options
+            path = config.get('path')
+            sheet_name = config.get('sheet_name', 0)  # First sheet by default
+            from .excel_connector import ExcelConnector
+            connector = ExcelConnector(path, sheet_name=sheet_name)
+        return connector.fetch_data()
+        
     def _load_sheets(self, config):
         """Load from Google Sheets"""
         if isinstance(config, str):

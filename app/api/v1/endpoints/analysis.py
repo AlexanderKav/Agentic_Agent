@@ -4,6 +4,7 @@ from typing import Optional
 import pandas as pd
 import tempfile
 import os
+from fastapi.responses import FileResponse
 
 from app.api.v1.models.requests import AnalysisRequest, DataSourceType
 from app.api.v1.models.responses import AnalysisResponse, FileUploadResponse, HealthResponse
@@ -97,3 +98,16 @@ async def health_check():
         version="1.0.0",
         timestamp=datetime.utcnow().isoformat()
     )
+
+@router.get("/chart/{filename}")
+async def get_chart(filename: str):
+    """Serve chart images"""
+    # Define the charts directory
+    charts_dir = os.path.join(os.getcwd(), "agents", "charts")
+    file_path = os.path.join(charts_dir, filename)
+    
+    # Check if file exists
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Chart not found")
+    
+    return FileResponse(file_path, media_type="image/png", filename=filename)
