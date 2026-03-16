@@ -14,12 +14,20 @@ import {
 } from '@mui/material';
 import FileUpload from './components/FileUpload';
 import DatabaseConnectionForm from './components/DatabaseConnectionForm';
+import GoogleSheetsConnectionForm from './components/GoogleSheetsConnectionForm';
 import QuestionInput from './components/QuestionInput';
 import DataPreview from './components/DataPreview';
 import ResultsDisplay from './components/ResultsDisplay';
 import UploadIcon from '@mui/icons-material/CloudUpload';
 import DatabaseIcon from '@mui/icons-material/Storage';
-import { uploadFile, analyzeDatabase, testDatabaseConnection } from './services/api';
+import GoogleIcon from '@mui/icons-material/Google';
+import { 
+  uploadFile, 
+  analyzeDatabase, 
+  testDatabaseConnection,
+  analyzeGoogleSheets,
+  testGoogleSheetsConnection 
+} from './services/api';
 
 function App() {
   const [tabValue, setTabValue] = useState(0);
@@ -30,82 +38,110 @@ function App() {
   const [error, setError] = useState(null);
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [userQuestion, setUserQuestion] = useState('');
+  
+  // Store connection configs
+  const [dbConfig, setDbConfig] = useState(null);
+  const [sheetsConfig, setSheetsConfig] = useState(null);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
-    setResults(null);
-    setPreview(null);
-    setError(null);
+    handleClearResults();
     setSelectedFile(null);
+    setDbConfig(null);
+    setSheetsConfig(null);
   };
 
   const handleFileSelect = (file) => {
     setSelectedFile(file);
-    setResults(null);
-    setError(null);
+    handleClearResults();
   };
 
-  const handleDatabaseConnect = async (dbConfig) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // For now, just store config and wait for question
-      // The actual analysis will happen when user submits question
-      setResults({ dbConfig }); // Temporary, will be replaced by actual results
-      setPreview(null);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Database connection failed');
-      setOpenSnackbar(true);
-    } finally {
-      setLoading(false);
-    }
+  const handleDatabaseConnect = async (config) => {
+    setDbConfig(config);
+    setResults({ dbConfig: config });
+    setPreview(null);
   };
 
-  const handleTestConnection = async (dbConfig) => {
+  const handleGoogleSheetsConnect = async (config) => {
+    setSheetsConfig(config);
+    setResults({ sheetsConfig: config });
+    setPreview(null);
+  };
+
+  const handleTestDatabaseConnection = async (config) => {
     try {
-      const result = await testDatabaseConnection(dbConfig);
+      const result = await testDatabaseConnection(config);
       return result;
     } catch (error) {
       throw error;
     }
   };
 
-// In your handleQuestionSubmit function for database tab
-const handleQuestionSubmit = async (question) => {
-  setLoading(true);
-  setError(null);
-  setUserQuestion(question);
-
-  try {
-    let response;
-    
-    if (tabValue === 0) {  // File Upload
-      if (!selectedFile) {
-        throw new Error('Please select a file first');
-      }
-      response = await uploadFile(selectedFile, question);
-      setPreview(response.preview);
-      setResults(response.analysis_results);
-    } else {  // Database
-      if (!results?.dbConfig) {
-        throw new Error('Please configure database connection first');
-      }
-      response = await analyzeDatabase(question, results.dbConfig);
-      // The response now matches FileUploadResponse structure
-      setPreview(response.preview);
-      setResults(response.analysis_results);
+  const handleTestGoogleSheetsConnection = async (config) => {
+    try {
+      const result = await testGoogleSheetsConnection(config);
+      return result;
+    } catch (error) {
+      throw error;
     }
-  } catch (err) {
-    setError(err.response?.data?.detail || err.message || 'Analysis failed');
-    setOpenSnackbar(true);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
+
+  const handleClearResults = () => {
+    setResults(null);
+    setPreview(null);
+    setUserQuestion('');
+  };
+
+  const handleQuestionSubmit = async (question) => {
+    setLoading(true);
+    setError(null);
+    setUserQuestion(question);
+
+    try {
+      let response;
+      
+      if (tabValue === 0) {  // File Upload
+        if (!selectedFile) {
+          throw new Error('Please select a file first');
+        }
+        response = await uploadFile(selectedFile, question);
+        setPreview(response.preview);
+        setResults(response.analysis_results);
+        
+      } else if (tabValue === 1) {  // Database
+        if (!dbConfig) {
+          throw new Error('Please configure database connection first');
+        }
+        response = await analyzeDatabase(question, dbConfig);
+        setPreview(response.preview);
+        setResults(response.analysis_results);
+        
+      } else {  // Google Sheets
+        if (!sheetsConfig) {
+          throw new Error('Please configure Google Sheets connection first');
+        }
+        response = await analyzeGoogleSheets(question, sheetsConfig);
+        setPreview(response.preview);
+        setResults(response.analysis_results);
+      }
+      
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Analysis failed');
+      setOpenSnackbar(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCloseSnackbar = () => {
     setOpenSnackbar(false);
   };
+
+  // Determine if we have a data source configured
+  const hasDataSource = 
+    (tabValue === 0 && selectedFile) || 
+    (tabValue === 1 && dbConfig) || 
+    (tabValue === 2 && sheetsConfig);
 
   return (
     <>
@@ -122,22 +158,31 @@ const handleQuestionSubmit = async (question) => {
           <Tabs value={tabValue} onChange={handleTabChange} centered>
             <Tab icon={<UploadIcon />} label="Upload File" />
             <Tab icon={<DatabaseIcon />} label="Connect Database" />
+            <Tab icon={<GoogleIcon />} label="Google Sheets" />
           </Tabs>
         </Paper>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {tabValue === 0 ? (
             <FileUpload onFileSelect={handleFileSelect} />
-          ) : (
+          ) : tabValue === 1 ? (
             <DatabaseConnectionForm 
               onConnect={handleDatabaseConnect}
-              onTestConnection={handleTestConnection}
+              onTestConnection={handleTestDatabaseConnection}
+              onClearResults={handleClearResults}
+              loading={loading}
+            />
+          ) : (
+            <GoogleSheetsConnectionForm
+              onConnect={handleGoogleSheetsConnect}
+              onTestConnection={handleTestGoogleSheetsConnection}
+              onClearResults={handleClearResults}
               loading={loading}
             />
           )}
 
           {/* Show Question Input if we have data source */}
-          {((tabValue === 0 && selectedFile) || (tabValue === 1 && results?.dbConfig)) && (
+          {hasDataSource && (
             <QuestionInput onSubmit={handleQuestionSubmit} loading={loading} />
           )}
 
@@ -149,7 +194,8 @@ const handleQuestionSubmit = async (question) => {
 
           {preview && <DataPreview data={preview} />}
 
-          {results && !results.dbConfig && (
+          {/* Show results only when we have actual results (not just config) */}
+          {results && !results.dbConfig && !results.sheetsConfig && (
             <ResultsDisplay results={results} userQuestion={userQuestion} />
           )}
         </Box>

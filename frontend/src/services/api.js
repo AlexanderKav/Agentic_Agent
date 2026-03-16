@@ -58,3 +58,17 @@ export const checkChartExists = async (filename) => {
 export const getChartUrl = (filename, key = 0) => {
   return `http://localhost:8000/api/v1/analysis/chart/${encodeURIComponent(filename)}?key=${key}`;
 };
+
+export const analyzeGoogleSheets = async (question, sheetsConfig) => {
+  const response = await api.post('/analysis/google-sheets', {
+    question: question || '',
+    sheet_config: sheetsConfig
+  });
+  return response.data;
+};
+
+// Test Google Sheets connection
+export const testGoogleSheetsConnection = async (sheetsConfig) => {
+  const response = await api.post('/analysis/test-google-sheets', sheetsConfig);
+  return response.data;
+};

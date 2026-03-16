@@ -12,19 +12,19 @@ import {
   Box,
   Alert,
   CircularProgress,
-  Divider,
-  IconButton,
+  Link,
   InputAdornment
 } from '@mui/material';
 import {
   Storage as DatabaseIcon,
+  Refresh as RefreshIcon,
+  Help as HelpIcon,
+  CheckCircle as CheckCircleIcon,
   Visibility,
-  VisibilityOff,
-  Link as LinkIcon,
-  Refresh as RefreshIcon
+  VisibilityOff
 } from '@mui/icons-material';
 
-const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
+const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, loading }) => {
   const [config, setConfig] = useState({
     db_type: 'postgresql',
     host: 'localhost',
@@ -40,9 +40,14 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [connectionSuccess, setConnectionSuccess] = useState(false);
 
   const handleChange = (field) => (event) => {
     setConfig({ ...config, [field]: event.target.value });
+    if (connectionSuccess) {
+      setConnectionSuccess(false);
+      setTestResult(null);
+    }
   };
 
   const handleTogglePassword = () => {
@@ -55,18 +60,40 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
     
     try {
       const result = await onTestConnection(config);
-      setTestResult({ success: true, message: 'Connection successful!' });
+      setTestResult({ success: true, message: '✅ Successfully connected to database!' });
+      setConnectionSuccess(true);
+      onConnect(config);
     } catch (error) {
       setTestResult({ 
         success: false, 
-        message: error.response?.data?.detail || 'Connection failed' 
+        message: error.response?.data?.detail || '❌ Connection failed' 
       });
+      setConnectionSuccess(false);
     } finally {
       setTesting(false);
     }
   };
 
-  // Get default port based on database type
+  const handleReset = () => {
+    setConnectionSuccess(false);
+    setTestResult(null);
+    setConfig({
+      db_type: 'postgresql',
+      host: 'localhost',
+      port: '5432',
+      database: '',
+      username: '',
+      password: '',
+      table: '',
+      query: '',
+      use_query: false
+    });
+    
+    if (onClearResults) {
+      onClearResults();
+    }
+  };
+
   const getDefaultPort = (dbType) => {
     const ports = {
       'postgresql': '5432',
@@ -76,7 +103,6 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
     return ports[dbType] || '5432';
   };
 
-  // Update port when database type changes
   const handleDbTypeChange = (event) => {
     const newType = event.target.value;
     setConfig({
@@ -100,7 +126,7 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
       <Grid container spacing={2}>
         {/* Database Type */}
         <Grid item xs={12} md={4}>
-          <FormControl fullWidth>
+          <FormControl fullWidth disabled={connectionSuccess}>
             <InputLabel>Database Type</InputLabel>
             <Select
               value={config.db_type}
@@ -123,6 +149,7 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
               value={config.host}
               onChange={handleChange('host')}
               placeholder="localhost or db.example.com"
+              disabled={connectionSuccess}
             />
           </Grid>
         )}
@@ -136,6 +163,7 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
               value={config.port}
               onChange={handleChange('port')}
               placeholder={getDefaultPort(config.db_type)}
+              disabled={connectionSuccess}
             />
           </Grid>
         )}
@@ -150,6 +178,14 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
             required
             placeholder={isSQLite ? "C:/data/mydb.sqlite" : "sales_db"}
             helperText={isSQLite ? "Full path to SQLite database file" : ""}
+            disabled={connectionSuccess}
+            InputProps={{
+              endAdornment: connectionSuccess && (
+                <InputAdornment position="end">
+                  <CheckCircleIcon color="success" />
+                </InputAdornment>
+              )
+            }}
           />
         </Grid>
 
@@ -161,6 +197,7 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
               label="Username"
               value={config.username}
               onChange={handleChange('username')}
+              disabled={connectionSuccess}
             />
           </Grid>
         )}
@@ -174,12 +211,13 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
               label="Password"
               value={config.password}
               onChange={handleChange('password')}
+              disabled={connectionSuccess}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton onClick={handleTogglePassword} edge="end">
+                    <Button onClick={handleTogglePassword} edge="end" disabled={connectionSuccess}>
                       {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
+                    </Button>
                   </InputAdornment>
                 )
               }}
@@ -187,9 +225,23 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
           </Grid>
         )}
 
-        {/* Table Name - required if not using custom query */}
+        {/* Table/Query Toggle */}
+        {!isSQLite && (
+          <Grid item xs={12}>
+            <Button
+              variant="text"
+              onClick={() => setConfig({ ...config, use_query: !config.use_query })}
+              disabled={connectionSuccess}
+              sx={{ mb: 1 }}
+            >
+              {config.use_query ? '← Use table instead' : 'Use custom SQL query →'}
+            </Button>
+          </Grid>
+        )}
+
+        {/* Table Name */}
         {!config.use_query && (
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12}>
             <TextField
               fullWidth
               label="Table Name"
@@ -197,22 +249,12 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
               onChange={handleChange('table')}
               required={!config.use_query}
               helperText="Which table to analyze"
+              disabled={connectionSuccess}
             />
           </Grid>
         )}
 
-        {/* Toggle for custom query */}
-        <Grid item xs={12}>
-          <Button
-            variant="text"
-            onClick={() => setConfig({ ...config, use_query: !config.use_query })}
-            sx={{ mb: 1 }}
-          >
-            {config.use_query ? '← Use table instead' : 'Use custom SQL query →'}
-          </Button>
-        </Grid>
-
-        {/* Custom Query (optional) */}
+        {/* Custom Query */}
         {config.use_query && (
           <Grid item xs={12}>
             <TextField
@@ -224,26 +266,26 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
               rows={3}
               placeholder="SELECT * FROM sales WHERE date > '2024-01-01'"
               helperText="Write your own SQL query"
+              disabled={connectionSuccess}
             />
           </Grid>
         )}
 
-        <Grid item xs={12}>
-          <Divider sx={{ my: 2 }} />
-        </Grid>
-
         {/* Test Connection Button */}
-        <Grid item xs={12} md={6}>
-          <Button
-            variant="outlined"
-            onClick={handleTestConnection}
-            disabled={testing || !config.database}
-            startIcon={testing ? <CircularProgress size={20} /> : <RefreshIcon />}
-            fullWidth
-          >
-            {testing ? 'Testing...' : 'Test Connection'}
-          </Button>
-        </Grid>
+        {!connectionSuccess && (
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button
+                variant="contained"
+                onClick={handleTestConnection}
+                disabled={testing || !config.database || (!config.table && !config.query)}
+                startIcon={testing ? <CircularProgress size={20} /> : <RefreshIcon />}
+              >
+                {testing ? 'Testing...' : 'Test Connection'}
+              </Button>
+            </Box>
+          </Grid>
+        )}
 
         {/* Test Result Message */}
         {testResult && (
@@ -254,20 +296,35 @@ const DatabaseConnectionForm = ({ onConnect, loading, onTestConnection }) => {
           </Grid>
         )}
 
-        {/* Connect Button */}
-        <Grid item xs={12} md={6}>
-          <Button
-            variant="contained"
-            onClick={() => onConnect(config)}
-            disabled={loading || !config.database || (!config.table && !config.query)}
-            startIcon={loading ? <CircularProgress size={20} /> : <LinkIcon />}
-            fullWidth
-            size="large"
-            sx={{ height: '56px' }}
-          >
-            {loading ? 'Connecting...' : 'Connect & Analyze'}
-          </Button>
-        </Grid>
+        {/* Reset Connection Link - Only shown after successful connection */}
+        {connectionSuccess && (
+          <Grid item xs={12} sx={{ textAlign: 'center', mt: 2 }}>
+            <Link
+              component="button"
+              variant="body2"
+              onClick={handleReset}
+            >
+              ← Connect to a different database
+            </Link>
+          </Grid>
+        )}
+
+        {/* Help Section - Always visible when not connected */}
+        {!connectionSuccess && (
+          <Grid item xs={12}>
+            <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <HelpIcon sx={{ mr: 1, fontSize: 18 }} />
+                Connection Examples:
+              </Typography>
+              <Typography variant="body2" component="div">
+                <strong>PostgreSQL:</strong> postgresql://user:pass@localhost:5432/dbname<br />
+                <strong>MySQL:</strong> mysql+pymysql://user:pass@localhost:3306/dbname<br />
+                <strong>SQLite:</strong> sqlite:///path/to/database.db
+              </Typography>
+            </Box>
+          </Grid>
+        )}
       </Grid>
     </Paper>
   );

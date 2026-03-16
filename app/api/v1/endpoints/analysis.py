@@ -11,6 +11,9 @@ from app.api.v1.models.responses import AnalysisResponse, FileUploadResponse, He
 from app.core.analysis import AnalysisOrchestrator
 from app.core.data_source import DataSourceHandler
 from connectors.database_connector import DatabaseConnector
+from pydantic import BaseModel
+from connectors.google_sheets import GoogleSheetsConnector
+
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
 orchestrator = AnalysisOrchestrator()
@@ -188,3 +191,107 @@ async def health_check():
         version="1.0.0",
         timestamp=datetime.utcnow().isoformat()
     )
+
+class GoogleSheetsRequest(BaseModel):
+    question: str
+    sheet_config: dict
+
+class GoogleSheetsTestRequest(BaseModel):
+    sheet_id: str
+    sheet_range: Optional[str] = "A1:Z1000"
+
+import math
+import numpy as np
+
+def clean_for_json(obj):
+    """Recursively clean data for JSON serialization"""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None  # Convert NaN/Inf to null
+        return obj
+    elif isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [clean_for_json(item) for item in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    return obj
+
+@router.post("/google-sheets", response_model=FileUploadResponse)
+async def analyze_google_sheets(request: GoogleSheetsRequest):
+    """
+    Connect to Google Sheets and analyze data
+    """
+    try:
+        config = request.sheet_config
+        print(f"📊 Google Sheets analysis requested for: {config.get('sheet_id')}")
+        
+        # Get credentials path from environment
+        creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not creds_path:
+            raise HTTPException(status_code=500, detail="Google credentials not configured")
+        
+        # Connect to Google Sheets
+        sheet_id = config.get('sheet_id')
+        sheet_range = config.get('sheet_range', 'A1:Z1000')
+        
+        connector = GoogleSheetsConnector(sheet_id, sheet_range)
+        df = connector.fetch_sheet()
+        
+        print(f"✅ Loaded {len(df)} rows from Google Sheets")
+        
+        # Create preview
+        preview = df.head(5).to_dict('records')
+        
+        # Run analysis
+        results, exec_time = await orchestrator.analyze_dataframe(df, request.question)
+        
+        return FileUploadResponse(
+            filename=f"google_sheet_{sheet_id[:8]}",
+            rows=len(df),
+            columns=list(df.columns),
+            preview=preview,
+            analysis_results=results
+        )
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/test-google-sheets")
+async def test_google_sheets_connection(request: GoogleSheetsTestRequest):
+    """
+    Test Google Sheets connection without running analysis
+    """
+    try:
+        creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not creds_path:
+            raise HTTPException(status_code=500, detail="Google credentials not configured")
+        
+        connector = GoogleSheetsConnector(request.sheet_id, request.sheet_range)
+        df = connector.fetch_sheet()
+        
+        if len(df) > 0:
+            # Convert DataFrame to dict and clean NaN values
+            preview_data = df.head(3).to_dict('records')
+            cleaned_preview = clean_for_json(preview_data)
+            cleaned_columns = clean_for_json(list(df.columns))
+            
+            return {
+                "status": "success", 
+                "message": f"Successfully connected! Found {len(df)} rows",
+                "columns": cleaned_columns,
+                "preview": cleaned_preview
+            }
+        else:
+            return {"status": "success", "message": "Connected but sheet is empty"}
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

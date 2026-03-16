@@ -4,6 +4,8 @@ from googleapiclient.discovery import build
 import os
 import pandas as pd
 from dotenv import load_dotenv
+import math
+import numpy as np
 
 load_dotenv()
 
@@ -39,7 +41,27 @@ class GoogleSheetsConnector:
         for row in data:
             if len(row) < len(headers):
                 row = row + [None] * (len(headers) - len(row))
-            normalized_data.append(row)
+            
+            # Convert empty strings to None
+            cleaned_row = []
+            for cell in row:
+                if cell == '':
+                    cleaned_row.append(None)
+                else:
+                    # Try to convert to number if possible
+                    try:
+                        if isinstance(cell, str) and cell.replace('.', '').replace('-', '').isdigit():
+                            cleaned_row.append(float(cell))
+                        else:
+                            cleaned_row.append(cell)
+                    except:
+                        cleaned_row.append(cell)
+            normalized_data.append(cleaned_row)
 
         df = pd.DataFrame(normalized_data, columns=headers)
+        
+        # Replace NaN/Inf with None in the entire DataFrame
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.where(pd.notnull(df), None)
+        
         return df
