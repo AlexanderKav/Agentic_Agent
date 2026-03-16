@@ -65,8 +65,18 @@ class VisualizationAgent:
         
         plt.tight_layout()
         filepath = os.path.join(self.output_dir, f"{name}.png")
+        
+        # ADD THESE PRINT STATEMENTS
+        print("Attempting to save chart to:", filepath)
+        
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close()
+        
+        # ADD THIS CHECK
+        if os.path.exists(filepath):
+            print("Chart successfully saved:", filepath)
+        else:
+            print("WARNING: Chart failed to save")
 
         return filepath
 
