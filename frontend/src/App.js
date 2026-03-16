@@ -71,36 +71,38 @@ function App() {
     }
   };
 
-  const handleQuestionSubmit = async (question) => {
-    setLoading(true);
-    setError(null);
-    setUserQuestion(question);
+// In your handleQuestionSubmit function for database tab
+const handleQuestionSubmit = async (question) => {
+  setLoading(true);
+  setError(null);
+  setUserQuestion(question);
 
-    try {
-      let response;
-      
-      if (tabValue === 0) {  // File Upload
-        if (!selectedFile) {
-          throw new Error('Please select a file first');
-        }
-        response = await uploadFile(selectedFile, question);
-        setPreview(response.preview);
-        setResults(response.analysis_results);
-      } else {  // Database
-        if (!results?.dbConfig) {
-          throw new Error('Please configure database connection first');
-        }
-        response = await analyzeDatabase(question, results.dbConfig);
-        setResults(response);
+  try {
+    let response;
+    
+    if (tabValue === 0) {  // File Upload
+      if (!selectedFile) {
+        throw new Error('Please select a file first');
       }
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Analysis failed');
-      setOpenSnackbar(true);
-    } finally {
-      setLoading(false);
+      response = await uploadFile(selectedFile, question);
+      setPreview(response.preview);
+      setResults(response.analysis_results);
+    } else {  // Database
+      if (!results?.dbConfig) {
+        throw new Error('Please configure database connection first');
+      }
+      response = await analyzeDatabase(question, results.dbConfig);
+      // The response now matches FileUploadResponse structure
+      setPreview(response.preview);
+      setResults(response.analysis_results);
     }
-  };
-
+  } catch (err) {
+    setError(err.response?.data?.detail || err.message || 'Analysis failed');
+    setOpenSnackbar(true);
+  } finally {
+    setLoading(false);
+  }
+};
   const handleCloseSnackbar = () => {
     setOpenSnackbar(false);
   };

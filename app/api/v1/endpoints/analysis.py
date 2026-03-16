@@ -4,6 +4,7 @@ import pandas as pd
 import tempfile
 import os
 import time
+from fastapi.responses import FileResponse
 
 from app.api.v1.models.requests import AnalysisRequest, DatabaseConnectionRequest, DatabaseTestRequest
 from app.api.v1.models.responses import AnalysisResponse, FileUploadResponse, HealthResponse
@@ -14,7 +15,7 @@ from connectors.database_connector import DatabaseConnector
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
 orchestrator = AnalysisOrchestrator()
 
-@router.post("/database", response_model=AnalysisResponse)
+@router.post("/database", response_model=FileUploadResponse)
 async def analyze_database(request: DatabaseConnectionRequest):
     """
     Connect to a database and analyze data
@@ -56,17 +57,50 @@ async def analyze_database(request: DatabaseConnectionRequest):
         
         print(f"✅ Loaded {len(df)} rows from database")
         
+        # Create preview (5 rows)
+        preview = df.head(5).to_dict('records')
+        
         # Run analysis
         results, exec_time = await orchestrator.analyze_dataframe(df, request.question)
         
-        return AnalysisResponse(
-            success=results.get("success", False),
-            insights=results.get("insights", ""),
-            raw_insights=results.get("raw_insights"),
-            results=results.get("results"),
-            plan=results.get("plan"),
-            warnings=results.get("warnings"),
-            execution_time=exec_time
+        # DEBUG: Print the structure of results
+        print("\n" + "="*60)
+        print("🗄️ DATABASE RESULTS STRUCTURE")
+        print("="*60)
+        print(f"Results keys: {results.keys()}")
+        
+        # IMPORTANT: Don't flatten the insights - preserve the full structure
+        # The frontend expects the full insights object, not just a string
+        insights_data = results.get("insights", {})
+        raw_insights_data = results.get("raw_insights", {})
+        
+        print(f"Insights type: {type(insights_data)}")
+        print(f"Insights preview: {str(insights_data)[:200]}...")
+        print("="*60 + "\n")
+        
+        # Create the analysis_results structure - PRESERVE the original structure
+        analysis_results = {
+            "success": results.get("success", False),
+            "insights": insights_data,  # Keep as original - don't convert to string!
+            "raw_insights": raw_insights_data,
+            "results": results.get("results", {}),
+            "plan": results.get("plan", {"plan": []}),
+            "warnings": results.get("warnings", []),
+            "mapping": results.get("mapping", {}),
+            "data_summary": results.get("data_summary", {
+                "rows": len(df),
+                "columns": list(df.columns)
+            }),
+            "execution_time": exec_time,
+            "is_generic_overview": results.get("is_generic_overview", False)
+        }
+        
+        return FileUploadResponse(
+            filename="database_query",
+            rows=len(df),
+            columns=list(df.columns),
+            preview=preview,
+            analysis_results=analysis_results
         )
         
     except Exception as e:
@@ -128,6 +162,8 @@ async def upload_file(
         return response
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
