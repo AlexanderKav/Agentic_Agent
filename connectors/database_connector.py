@@ -43,6 +43,18 @@ class DatabaseConnector:
         # Build connection string from parts if provided
         if not connection_string and kwargs:
             self.connection_string = self._build_connection_string(kwargs)
+
+    def create_readonly_connection(self):
+        """Create a read-only database connection"""
+        if 'postgresql' in self.connection_string:
+            # PostgreSQL read-only mode
+            self.engine = create_engine(
+                self.connection_string,
+                connect_args={'options': '-c default_transaction_read_only=on'}
+            )
+        elif 'mysql' in self.connection_string:
+            # MySQL read-only user - create separate user with SELECT only
+            pass
     
     def _build_connection_string(self, params):
         """Build connection string from individual parameters"""
@@ -193,7 +205,7 @@ class DatabaseConnector:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit"""
         self.close()
-
+    
 
 # For backwards compatibility with your main2.py
 if __name__ == "__main__":

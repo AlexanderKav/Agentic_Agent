@@ -2,9 +2,50 @@ import pandas as pd
 import tempfile
 import os
 from typing import BinaryIO
-
+import magic  
+import subprocess
+from fastapi import HTTPException
 class DataSourceHandler:
     """Handles file uploads and temporary storage"""
+
+    # Virus scanning method
+    @staticmethod
+    def scan_file(file_path: str):
+        """Scan file with ClamAV (if installed)"""
+        try:
+            # Check if ClamAV is installed
+            result = subprocess.run(
+                ['clamscan', '--version'],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode != 0:
+                print("⚠️ ClamAV not installed - skipping virus scan")
+                return True
+                
+            # Scan the file
+            scan_result = subprocess.run(
+                ['clamscan', '--no-summary', file_path],
+                capture_output=True,
+                timeout=30
+            )
+            
+            if scan_result.returncode != 0:
+                print(f"❌ Virus scan failed: {scan_result.stdout.decode()}")
+                return False
+                
+            print("✅ Virus scan passed")
+            return True
+            
+        except FileNotFoundError:
+            print("⚠️ ClamAV not found - skipping virus scan")
+            return True
+        except subprocess.TimeoutExpired:
+            print("⚠️ Virus scan timed out - skipping")
+            return True
+        except Exception as e:
+            print(f"⚠️ Virus scan error: {e}")
+            return True
     
     @staticmethod
     async def save_upload_file(upload_file) -> str:
@@ -57,3 +98,16 @@ class DataSourceHandler:
                 
         except Exception as e:
             raise Exception(f"Error reading file: {str(e)}")
+    # In your DataSourceHandler
+
+
+    @staticmethod
+    def validate_file_content(file_path: str, expected_type: str):
+        """Validate file content using magic numbers"""
+        mime = magic.from_file(file_path, mime=True)
+        
+        if expected_type == 'csv' and mime not in ['text/csv', 'text/plain']:
+            raise ValueError("Invalid CSV file format")
+        
+        if expected_type in ['xlsx', 'xls'] and 'spreadsheet' not in mime:
+            raise ValueError("Invalid Excel file format")

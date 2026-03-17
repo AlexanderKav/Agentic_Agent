@@ -123,6 +123,23 @@ class SchemaMapper:
         df_clean = self._convert_to_usd(df_clean, warnings)
 
         return df_clean, mapping, warnings
+    
+    def is_schema_acceptable(self, mapping, warnings):
+        """Determine if the mapped schema is acceptable for analysis"""
+        
+        # Critical columns that must exist
+        critical_columns = ['revenue', 'date']
+        mapped_critical = [col for col in critical_columns if col in mapping.values()]
+        
+        if len(mapped_critical) < len(critical_columns):
+            missing = set(critical_columns) - set(mapping.values())
+            return False, f"Missing critical columns: {missing}"
+        
+        # Check if too many columns are unmatched
+        if len(warnings) > len(self.df.columns) * 0.3:  # More than 30% unmatched
+            return False, "Too many columns could not be mapped"
+        
+        return True, "Schema acceptable"
 
     def _convert_to_usd(self, df, warnings):
         """Convert all non-USD revenue and cost columns to USD"""

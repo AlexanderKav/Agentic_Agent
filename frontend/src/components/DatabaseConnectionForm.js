@@ -20,9 +20,12 @@ import {
   Refresh as RefreshIcon,
   Help as HelpIcon,
   CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
   Visibility,
   VisibilityOff
 } from '@mui/icons-material';
+
+const MAX_QUERY_LENGTH = 2000;
 
 const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, loading }) => {
   const [config, setConfig] = useState({
@@ -40,10 +43,51 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
   const [showPassword, setShowPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [validationError, setValidationError] = useState(null);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
+
+  const validateConfig = () => {
+    if (!config.database) {
+      setValidationError('Database name is required');
+      return false;
+    }
+
+    if (!config.use_query && !config.table) {
+      setValidationError('Table name is required');
+      return false;
+    }
+
+    if (config.use_query && config.query.length > MAX_QUERY_LENGTH) {
+      setValidationError(`Query too long. Maximum ${MAX_QUERY_LENGTH} characters`);
+      return false;
+    }
+
+    if (config.use_query && config.query) {
+      const dangerousKeywords = ['DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE', 'INSERT', 'UPDATE'];
+      const upperQuery = config.query.toUpperCase();
+      for (const keyword of dangerousKeywords) {
+        if (upperQuery.includes(keyword)) {
+          setValidationError(`Dangerous SQL keyword '${keyword}' not allowed. Only SELECT queries are permitted.`);
+          return false;
+        }
+      }
+    }
+
+    if (config.port) {
+      const portNum = parseInt(config.port);
+      if (isNaN(portNum) || portNum < 1024 || portNum > 65535) {
+        setValidationError('Port must be between 1024 and 65535');
+        return false;
+      }
+    }
+
+    setValidationError(null);
+    return true;
+  };
 
   const handleChange = (field) => (event) => {
     setConfig({ ...config, [field]: event.target.value });
+    setValidationError(null);
     if (connectionSuccess) {
       setConnectionSuccess(false);
       setTestResult(null);
@@ -54,29 +98,75 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
     setShowPassword(!showPassword);
   };
 
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
+const handleTestConnection = async () => {
+  if (!validateConfig()) return;
+
+  setTesting(true);
+  setTestResult(null);
+  setValidationError(null);
+  
+  try {
+    // Prepare the config for the API
+    const apiConfig = {
+      db_type: config.db_type,
+      host: config.host,
+      port: config.port,
+      username: config.username,
+      password: config.password,
+      table: config.use_query ? null : config.table,
+      query: config.use_query ? config.query : null,
+      use_query: config.use_query
+    };
     
-    try {
-      const result = await onTestConnection(config);
-      setTestResult({ success: true, message: '✅ Successfully connected to database!' });
-      setConnectionSuccess(true);
-      onConnect(config);
-    } catch (error) {
-      setTestResult({ 
-        success: false, 
-        message: error.response?.data?.detail || '❌ Connection failed' 
-      });
-      setConnectionSuccess(false);
-    } finally {
-      setTesting(false);
+    // Handle SQLite specially - just pass the filename, not the full path
+    if (config.db_type === 'sqlite') {
+      // Extract just the filename from the path
+      const fileName = config.database.split('\\').pop().split('/').pop();
+      apiConfig.database = fileName || config.database;
+    } else {
+      apiConfig.database = config.database;
     }
-  };
+    
+    const result = await onTestConnection(apiConfig);
+    
+    setTestResult({ 
+      success: true, 
+      message: result.message || '✅ Successfully connected!' 
+    });
+    setConnectionSuccess(true);
+    onConnect(config);
+    
+  } catch (error) {
+    console.error("Connection error:", error);
+    
+    // Extract error message safely
+    let errorMessage = '❌ Connection failed';
+    if (error.response?.data?.detail) {
+      if (typeof error.response.data.detail === 'string') {
+        errorMessage = error.response.data.detail;
+      } else if (typeof error.response.data.detail === 'object') {
+        errorMessage = error.response.data.detail.msg || 
+                      error.response.data.detail.message || 
+                      JSON.stringify(error.response.data.detail);
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setTestResult({ 
+      success: false, 
+      message: errorMessage
+    });
+    setConnectionSuccess(false);
+  } finally {
+    setTesting(false);
+  }
+};
 
   const handleReset = () => {
     setConnectionSuccess(false);
     setTestResult(null);
+    setValidationError(null);
     setConfig({
       db_type: 'postgresql',
       host: 'localhost',
@@ -88,6 +178,7 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
       query: '',
       use_query: false
     });
+    setShowPassword(false);
     
     if (onClearResults) {
       onClearResults();
@@ -164,6 +255,7 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
               onChange={handleChange('port')}
               placeholder={getDefaultPort(config.db_type)}
               disabled={connectionSuccess}
+              error={validationError?.includes('Port')}
             />
           </Grid>
         )}
@@ -179,6 +271,7 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
             placeholder={isSQLite ? "C:/data/mydb.sqlite" : "sales_db"}
             helperText={isSQLite ? "Full path to SQLite database file" : ""}
             disabled={connectionSuccess}
+            error={validationError?.includes('Database')}
             InputProps={{
               endAdornment: connectionSuccess && (
                 <InputAdornment position="end">
@@ -250,6 +343,7 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
               required={!config.use_query}
               helperText="Which table to analyze"
               disabled={connectionSuccess}
+              error={validationError?.includes('Table')}
             />
           </Grid>
         )}
@@ -265,9 +359,23 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
               multiline
               rows={3}
               placeholder="SELECT * FROM sales WHERE date > '2024-01-01'"
-              helperText="Write your own SQL query"
+              helperText={`Max ${MAX_QUERY_LENGTH} characters. Only SELECT queries allowed.`}
               disabled={connectionSuccess}
+              error={validationError?.includes('Query')}
             />
+          </Grid>
+        )}
+
+        {/* Validation Error Alert */}
+        {validationError && !connectionSuccess && (
+          <Grid item xs={12}>
+            <Alert 
+              severity="error" 
+              icon={<ErrorIcon />}
+              onClose={() => setValidationError(null)}
+            >
+              {validationError}
+            </Alert>
           </Grid>
         )}
 
@@ -309,18 +417,21 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
           </Grid>
         )}
 
-        {/* Help Section - Always visible when not connected */}
+        {/* Help Section */}
         {!connectionSuccess && (
           <Grid item xs={12}>
             <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
               <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <HelpIcon sx={{ mr: 1, fontSize: 18 }} />
-                Connection Examples:
+                Requirements:
               </Typography>
               <Typography variant="body2" component="div">
-                <strong>PostgreSQL:</strong> postgresql://user:pass@localhost:5432/dbname<br />
-                <strong>MySQL:</strong> mysql+pymysql://user:pass@localhost:3306/dbname<br />
-                <strong>SQLite:</strong> sqlite:///path/to/database.db
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  <li>Read-only access recommended</li>
+                  <li><strong>Required columns:</strong> date and revenue (case-insensitive)</li>
+                  <li>Date column must contain valid dates</li>
+                  <li>Revenue column must contain numbers</li>
+                </ul>
               </Typography>
             </Box>
           </Grid>

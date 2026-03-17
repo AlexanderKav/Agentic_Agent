@@ -15,8 +15,12 @@ import {
   Google as GoogleIcon,
   Refresh as RefreshIcon,
   Help as HelpIcon,
-  CheckCircle as CheckCircleIcon
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon
 } from '@mui/icons-material';
+
+const API_BASE_URL = 'http://localhost:8000/api/v1';
+const MAX_SHEET_SIZE = 100000;
 
 const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResults, loading }) => {
   const [config, setConfig] = useState({
@@ -27,48 +31,121 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
   
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [validationError, setValidationError] = useState(null);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
 
+  const validateSheetId = (id) => {
+    const regex = /^[a-zA-Z0-9-_]+$/;
+    return regex.test(id);
+  };
+
   const handleChange = (field) => (event) => {
-    setConfig({ ...config, [field]: event.target.value });
-    // Reset connection status when config changes
+    const value = event.target.value;
+    setConfig({ ...config, [field]: value });
+    setValidationError(null);
     if (connectionSuccess) {
       setConnectionSuccess(false);
       setTestResult(null);
     }
   };
 
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
-    
-    try {
-      const result = await onTestConnection(config);
-      setTestResult({ success: true, message: '✅ Successfully connected to Google Sheet!' });
-      setConnectionSuccess(true);
-      // Notify parent that connection is successful and pass the config
-      onConnect(config);
-    } catch (error) {
-      setTestResult({ 
-        success: false, 
-        message: error.response?.data?.detail || '❌ Connection failed' 
-      });
-      setConnectionSuccess(false);
-    } finally {
-      setTesting(false);
-    }
-  };
+ const handleTestConnection = async () => {
+  if (!config.sheet_id) {
+    setValidationError('Sheet ID is required');
+    return;
+  }
 
+  const extractedId = extractSheetId(config.sheet_id);
+  if (!validateSheetId(extractedId)) {
+    setValidationError('Invalid Sheet ID format');
+    return;
+  }
+
+  setTesting(true);
+  setTestResult(null);
+  setValidationError(null);
+  
+  try {
+    const result = await onTestConnection({ 
+      ...config, 
+      sheet_id: extractedId 
+    });
+    
+    // Check for specific success scenarios
+    let successMessage = '✅ Successfully connected!';
+    if (result.message) {
+      successMessage = result.message;
+    } else if (result.rows) {
+      successMessage = `✅ Connected! Found ${result.rows} rows.`;
+    }
+    
+    setTestResult({ 
+      success: true, 
+      message: successMessage
+    });
+    setConnectionSuccess(true);
+    
+    // Pass the config to parent
+    onConnect({ ...config, sheet_id: extractedId });
+    
+  } catch (error) {
+    console.error("Google Sheets connection error:", error);
+    
+    // Extract detailed error message
+    let errorMessage = '❌ Connection failed';
+    
+    if (error.response?.data?.detail) {
+      const detail = error.response.data.detail;
+      
+      // Handle different types of error details
+      if (typeof detail === 'string') {
+        errorMessage = detail;
+      } else if (typeof detail === 'object') {
+        // Handle validation errors
+        if (detail.msg) {
+          errorMessage = detail.msg;
+        } else if (detail.message) {
+          errorMessage = detail.message;
+        } else {
+          errorMessage = JSON.stringify(detail);
+        }
+      }
+      
+      // Make error messages more user-friendly
+      if (errorMessage.includes('404')) {
+        errorMessage = '❌ Sheet not found. Check the Sheet ID and sharing settings.';
+      } else if (errorMessage.includes('403')) {
+        errorMessage = '❌ Permission denied. Make sure the sheet is shared with your service account.';
+      } else if (errorMessage.includes('date')) {
+        errorMessage = '❌ Schema validation failed: Date column contains invalid formats.';
+      } else if (errorMessage.includes('revenue')) {
+        errorMessage = '❌ Schema validation failed: Revenue column contains non-numeric values.';
+      } else if (errorMessage.includes('Missing required columns')) {
+        errorMessage = '❌ Missing required columns. Your sheet must contain "date" and "revenue" columns.';
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setTestResult({ 
+      success: false, 
+      message: errorMessage
+    });
+    setConnectionSuccess(false);
+  } finally {
+    setTesting(false);
+  }
+};
   const handleReset = () => {
     setConnectionSuccess(false);
     setTestResult(null);
+    setValidationError(null);
     setConfig({ 
       sheet_id: '', 
       sheet_range: 'A1:Z1000',
       sheet_name: '' 
     });
     
-    // Clear parent's results
     if (onClearResults) {
       onClearResults();
     }
@@ -94,6 +171,9 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
         <Typography variant="h6">
           Connect to Google Sheets
         </Typography>
+        <Typography variant="caption" sx={{ ml: 'auto', color: '#666' }}>
+          Max rows: {MAX_SHEET_SIZE.toLocaleString()}
+        </Typography>
       </Box>
 
       <Grid container spacing={2}>
@@ -109,6 +189,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
             helperText="Paste the full URL or just the Sheet ID"
             required
             disabled={connectionSuccess}
+            error={validationError?.includes('Sheet ID')}
             InputProps={{
               endAdornment: connectionSuccess && (
                 <InputAdornment position="end">
@@ -143,6 +224,19 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
             disabled={connectionSuccess}
           />
         </Grid>
+
+        {/* Validation Error Alert */}
+        {validationError && !connectionSuccess && (
+          <Grid item xs={12}>
+            <Alert 
+              severity="error" 
+              icon={<ErrorIcon />}
+              onClose={() => setValidationError(null)}
+            >
+              {validationError}
+            </Alert>
+          </Grid>
+        )}
 
         {/* Test Connection Button */}
         {!connectionSuccess && (
@@ -182,29 +276,23 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
           </Grid>
         )}
 
-        {/* Help Section - Always visible when not connected */}
+        {/* Help Section */}
         {!connectionSuccess && (
           <Grid item xs={12}>
             <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
               <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <HelpIcon sx={{ mr: 1, fontSize: 18 }} />
-                How to get your Sheet ID:
+                Requirements:
               </Typography>
               <Typography variant="body2" component="div">
-                <ol style={{ margin: 0, paddingLeft: 20 }}>
-                  <li>Open your Google Sheet in a browser</li>
-                  <li>Look at the URL: <code style={{ backgroundColor: '#e0e0e0', padding: '2px 4px', borderRadius: 2 }}>
-                    https://docs.google.com/spreadsheets/d/<strong>1aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890</strong>/edit
-                  </code></li>
-                  <li>Copy the long string between <code>/d/</code> and <code>/edit</code></li>
-                  <li>Paste it in the field above</li>
-                </ol>
-              </Typography>
-              <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 2 }}>
-                Your sheet must be shared with this email: 
-                <Box component="span" sx={{ fontWeight: 'bold', ml: 1, color: '#1976d2' }}>
-                  your-service-account@project.iam.gserviceaccount.com
-                </Box>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  <li>Sheet must be shared with your service account</li>
+                  <li>Maximum {MAX_SHEET_SIZE.toLocaleString()} rows will be processed</li>
+                  <li>First row must contain column headers</li>
+                  <li><strong>Required columns:</strong> date and revenue (case-insensitive)</li>
+                  <li>Date column must contain valid dates</li>
+                  <li>Revenue column must contain numbers</li>
+                </ul>
               </Typography>
             </Box>
           </Grid>
