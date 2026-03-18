@@ -9,7 +9,7 @@ import axios from 'axios';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
-const FileUpload = ({ onFileSelect }) => {
+const FileUpload = ({ onFileSelect, onClearResults }) => {
   const [fileError, setFileError] = useState(null);
   const [schemaError, setSchemaError] = useState(null);
   const [isValidating, setIsValidating] = useState(false);
@@ -41,6 +41,7 @@ const FileUpload = ({ onFileSelect }) => {
         console.log('❌ Validation failed:', response.data.message);
         setSchemaError(response.data.message);
         setIsValid(false);
+        onFileSelect(null);
       }
     } catch (error) {
       console.error('❌ Validation error:', error);
@@ -48,6 +49,7 @@ const FileUpload = ({ onFileSelect }) => {
       console.error('❌ Response status:', error.response?.status);
       setSchemaError(error.response?.data?.detail || 'Schema validation failed');
       setIsValid(false);
+      onFileSelect(null);
     } finally {
       setIsValidating(false);
     }
@@ -62,6 +64,7 @@ const FileUpload = ({ onFileSelect }) => {
     // Check file size
     if (file.size > MAX_FILE_SIZE) {
       setFileError(`File too large. Maximum size is ${MAX_FILE_SIZE / (1024*1024)}MB. Your file is ${(file.size / (1024*1024)).toFixed(2)}MB.`);
+      onFileSelect(null);
       return false;
     }
     
@@ -71,6 +74,7 @@ const FileUpload = ({ onFileSelect }) => {
     
     if (!validExtensions.includes(fileExt)) {
       setFileError(`Invalid file type. Please upload CSV or Excel files.`);
+      onFileSelect(null);
       return false;
     }
 
@@ -88,6 +92,7 @@ const FileUpload = ({ onFileSelect }) => {
       } else {
         setFileError('Invalid file type. Please upload CSV or Excel files.');
       }
+      onFileSelect(null);
       return;
     }
     
@@ -114,6 +119,9 @@ const FileUpload = ({ onFileSelect }) => {
     setFileError(null);
     setSchemaError(null);
     setIsValid(false);
+    if (onClearResults) {
+      onClearResults();
+    }
     open();
   };
 

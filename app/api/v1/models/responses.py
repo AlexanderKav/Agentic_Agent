@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 
 class AnalysisResponse(BaseModel):
@@ -12,13 +12,16 @@ class AnalysisResponse(BaseModel):
     charts: Optional[Dict[str, str]] = None
     execution_time: Optional[float] = None
 
+
 class FileUploadResponse(BaseModel):
     """Response after file upload"""
     filename: str
     rows: int
     columns: List[str]
     preview: List[Dict[str, Any]]
-    analysis_results: Optional[Dict[str, Any]] = None  # Added this field
+    analysis_results: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    
+
 
 class HealthResponse(BaseModel):
     """Health check response"""

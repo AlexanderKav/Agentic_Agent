@@ -89,8 +89,12 @@ class DatabaseTestRequest(BaseModel):
     
     @validator('table')
     def validate_table(cls, v):
-        if v and not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', v):
-            raise ValueError("Invalid table name. Use only letters, numbers, and underscores")
+        if v:
+            # Strip whitespace first
+            v = v.strip()
+            # Then validate
+            if not re.match(r'^[a-zA-Z0-9_]+$', v):
+                raise ValueError("Invalid table name. Use only letters, numbers, and underscores")
         return v
 
 class GoogleSheetsRequest(BaseModel):

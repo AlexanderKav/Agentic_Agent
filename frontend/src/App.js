@@ -39,6 +39,9 @@ function App() {
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [userQuestion, setUserQuestion] = useState('');
   
+  // Track if data source is valid and ready for questions
+  const [dataSourceReady, setDataSourceReady] = useState(false);
+  
   // Store connection configs
   const [dbConfig, setDbConfig] = useState(null);
   const [sheetsConfig, setSheetsConfig] = useState(null);
@@ -49,30 +52,50 @@ function App() {
     setSelectedFile(null);
     setDbConfig(null);
     setSheetsConfig(null);
+    setDataSourceReady(false);
+    setUserQuestion('');
   };
 
   const handleFileSelect = (file) => {
     setSelectedFile(file);
+    setDataSourceReady(!!file);
     handleClearResults();
+    setUserQuestion('');
   };
 
-  const handleDatabaseConnect = async (config) => {
-    setDbConfig(config);
-    setResults({ dbConfig: config });
-    setPreview(null);
+  const handleDatabaseConnect = (config, isValid) => {
+    if (isValid) {
+      setDbConfig(config);
+      setDataSourceReady(true);
+      setResults({ dbConfig: config });
+      setPreview(null);
+    } else {
+      setDbConfig(null);
+      setDataSourceReady(false);
+      setUserQuestion('');
+    }
   };
 
-  const handleGoogleSheetsConnect = async (config) => {
-    setSheetsConfig(config);
-    setResults({ sheetsConfig: config });
-    setPreview(null);
+  const handleGoogleSheetsConnect = (config, isValid) => {
+    if (isValid) {
+      setSheetsConfig(config);
+      setDataSourceReady(true);
+      setResults({ sheetsConfig: config });
+      setPreview(null);
+    } else {
+      setSheetsConfig(null);
+      setDataSourceReady(false);
+      setUserQuestion('');
+    }
   };
 
   const handleTestDatabaseConnection = async (config) => {
     try {
       const result = await testDatabaseConnection(config);
-      return result;
+      return { success: true, data: result };
     } catch (error) {
+      setDataSourceReady(false);
+      setUserQuestion('');
       throw error;
     }
   };
@@ -80,8 +103,10 @@ function App() {
   const handleTestGoogleSheetsConnection = async (config) => {
     try {
       const result = await testGoogleSheetsConnection(config);
-      return result;
+      return { success: true, data: result };
     } catch (error) {
+      setDataSourceReady(false);
+      setUserQuestion('');
       throw error;
     }
   };
@@ -90,6 +115,7 @@ function App() {
     setResults(null);
     setPreview(null);
     setUserQuestion('');
+    setDataSourceReady(false);
   };
 
   const handleQuestionSubmit = async (question) => {
@@ -128,6 +154,8 @@ function App() {
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Analysis failed');
       setOpenSnackbar(true);
+      setDataSourceReady(false);
+      setUserQuestion('');
     } finally {
       setLoading(false);
     }
@@ -137,11 +165,11 @@ function App() {
     setOpenSnackbar(false);
   };
 
-  // Determine if we have a data source configured
-  const hasDataSource = 
+  // Determine if we have a valid data source configured
+  const hasValidDataSource = 
     (tabValue === 0 && selectedFile) || 
-    (tabValue === 1 && dbConfig) || 
-    (tabValue === 2 && sheetsConfig);
+    (tabValue === 1 && dbConfig && dataSourceReady) || 
+    (tabValue === 2 && sheetsConfig && dataSourceReady);
 
   return (
     <>
@@ -164,7 +192,10 @@ function App() {
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {tabValue === 0 ? (
-            <FileUpload onFileSelect={handleFileSelect} />
+            <FileUpload 
+              onFileSelect={handleFileSelect}
+              onClearResults={handleClearResults}
+            />
           ) : tabValue === 1 ? (
             <DatabaseConnectionForm 
               onConnect={handleDatabaseConnect}
@@ -181,9 +212,13 @@ function App() {
             />
           )}
 
-          {/* Show Question Input if we have data source */}
-          {hasDataSource && (
-            <QuestionInput onSubmit={handleQuestionSubmit} loading={loading} />
+          {/* Show Question Input only if we have a VALID data source */}
+          {hasValidDataSource && (
+            <QuestionInput 
+              onSubmit={handleQuestionSubmit} 
+              loading={loading}
+              onClear={() => setUserQuestion('')}
+            />
           )}
 
           {loading && (

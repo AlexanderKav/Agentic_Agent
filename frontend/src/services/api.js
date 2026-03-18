@@ -33,9 +33,17 @@ export const analyzeDatabase = async (question, dbConfig) => {
 };
 
 // Test database connection
+// Test database connection
 export const testDatabaseConnection = async (dbConfig) => {
-  const response = await api.post('/analysis/test-connection', dbConfig);
-  return response.data;
+  try {
+    console.log("📤 Testing database connection with:", dbConfig);
+    const response = await api.post('/analysis/test-connection', dbConfig);
+    console.log("📥 Test connection response:", response.data);
+    return response.data;  // Make sure we're returning the data
+  } catch (error) {
+    console.error("❌ Test connection error:", error);
+    throw error;  // Re-throw to be caught by the component
+  }
 };
 
 // Health check

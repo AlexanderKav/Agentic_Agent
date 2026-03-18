@@ -1,3 +1,4 @@
+# app/api/v1/endpoints/analysis.py
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
 from typing import Optional
 import pandas as pd
@@ -15,7 +16,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from app.api.v1.models.requests import AnalysisRequest, DatabaseConnectionRequest, DatabaseTestRequest
+from app.api.v1.models.requests import AnalysisRequest, DatabaseConnectionRequest, DatabaseTestRequest, GoogleSheetsRequest, GoogleSheetsTestRequest
 from app.api.v1.models.responses import AnalysisResponse, FileUploadResponse, HealthResponse
 from app.core.analysis import AnalysisOrchestrator
 from app.core.data_source import DataSourceHandler
@@ -40,19 +41,77 @@ DANGEROUS_SQL_KEYWORDS = [
     'REVOKE', 'EXEC', 'EXECUTE'
 ]
 
+# ==================== HELPER FUNCTIONS ====================
+
+def clean_for_json(obj):
+    """Recursively clean data for JSON serialization"""
+    if obj is None:
+        return None
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [clean_for_json(item) for item in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    elif isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    elif isinstance(obj, pd.Series):
+        return clean_for_json(obj.to_dict())
+    elif isinstance(obj, pd.DataFrame):
+        return clean_for_json(obj.to_dict('records'))
+    return obj
+
 # ==================== VALIDATION FUNCTIONS ====================
 
 def validate_database_config(config: dict):
     """Validate database configuration for security"""
     
+    db_type = config.get('db_type', 'postgresql')
+    
     # 1. Validate table name (if provided)
     table_name = config.get('table', '')
     if table_name:
-        # Only allow alphanumeric and underscores
-        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+        # Strip whitespace first
+        table_name = table_name.strip()
+        # Update the config with stripped value
+        config['table'] = table_name
+        
+        if db_type == 'postgresql':
+            # PostgreSQL: letters, numbers, underscores (can start with numbers)
+            if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid PostgreSQL table name '{table_name}'. Use only letters, numbers, and underscores."
+                )
+
+        elif db_type == 'mysql':
+            # MySQL: same as PostgreSQL but also allows $ and 
+            if not re.match(r'^[a-zA-Z0-9_$]+$', table_name):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid MySQL table name '{table_name}'. Use only letters, numbers, underscores, and $."
+                )
+        elif db_type == 'sqlite':
+            # SQLite: most permissive, but we'll keep it safe
+            if not re.match(r'^[a-zA-Z0-9_]+$', table_name):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid SQLite table name '{table_name}'. Use only letters, numbers, and underscores for safety."
+                )
+        
+        # Optional: Add length check (PostgreSQL limit is 63 bytes)
+        if len(table_name) > 63:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid table name. Use only letters, numbers, and underscores"
+                detail=f"Table name too long ({len(table_name)} chars). Maximum is 63 characters."
             )
     
     # 2. Validate and sanitize query (if provided)
@@ -120,31 +179,12 @@ def validate_dataframe(df: pd.DataFrame):
     
     return True
 
-
-def clean_for_json(obj):
-    """Recursively clean data for JSON serialization"""
-    if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None  # Convert NaN/Inf to null
-        return obj
-    elif isinstance(obj, dict):
-        return {k: clean_for_json(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [clean_for_json(item) for item in obj]
-    elif isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        if np.isnan(obj) or np.isinf(obj):
-            return None
-        return float(obj)
-    return obj
-
 # ==================== DATABASE ENDPOINTS ====================
 
 @router.post("/database", response_model=FileUploadResponse)
-@limiter.limit("20/minute")  # 20 database analyses per minute
+@limiter.limit("20/minute")
 async def analyze_database(
-    request: Request,  # Required for rate limiting
+    request: Request,
     db_request: DatabaseConnectionRequest
 ):
     """
@@ -156,7 +196,12 @@ async def analyze_database(
         # 🔐 VALIDATE THE CONFIGURATION
         validate_database_config(config)
         
-        print(f"📊 Database analysis requested for: {config.get('db_type')}")
+        print(f"\n{'='*60}")
+        print(f"📊 DATABASE ANALYSIS REQUESTED")
+        print(f"{'='*60}")
+        print(f"Database type: {config.get('db_type')}")
+        print(f"Question: {db_request.question[:50] if db_request.question else 'No question (overview)'}")
+        print(f"{'='*60}\n")
         
         # Build connection string based on database type
         db_type = config.get('db_type')
@@ -166,7 +211,41 @@ async def analyze_database(
         elif db_type == 'mysql':
             conn_string = f"mysql+pymysql://{config.get('username')}:{config.get('password')}@{config.get('host')}:{config.get('port')}/{config.get('database')}"
         elif db_type == 'sqlite':
-            conn_string = f"sqlite:///{config.get('database')}"
+            import os
+            original_path = config.get('database')
+            
+            # Get absolute path and normalize
+            if os.path.isabs(original_path):
+                abs_path = os.path.normpath(original_path)
+            else:
+                abs_path = os.path.normpath(os.path.abspath(original_path))
+            
+            print(f"📁 SQLite path: {abs_path}")
+            
+            # Check if file exists
+            if not os.path.exists(abs_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"SQLite database file not found: {abs_path}"
+                )
+            
+            # Check file permissions
+            if not os.access(abs_path, os.R_OK):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot read SQLite file: {abs_path}"
+                )
+            
+            print(f"✅ SQLite file exists: {abs_path}")
+            print(f"📏 File size: {os.path.getsize(abs_path)} bytes")
+            
+            # Convert backslashes to forward slashes
+            path_for_uri = abs_path.replace('\\', '/')
+            
+            # USE THE WORKING FORMAT - without uri=true
+            conn_string = f"sqlite:///{path_for_uri}?mode=ro"
+            print(f"🔌 Connection string: {conn_string}")
+            
         else:
             raise ValueError(f"Unsupported database type: {db_type}")
         
@@ -183,10 +262,16 @@ async def analyze_database(
             print(f"📝 Executing custom query")
             df = connector.fetch_query(config['query'])
         else:
+            # STRIP trailing spaces from table name
             table = config.get('table')
+            if table:
+                table = table.strip()
+                config['table'] = table  # Update config with stripped value
+            
             if not table:
                 raise HTTPException(status_code=400, detail="Table name is required")
-            print(f"📋 Fetching table: {table}")
+            
+            print(f"📋 Fetching table: '{table}'")  # Quotes to show any hidden spaces
             df = connector.fetch_table(table)
         
         # 🔐 VALIDATE THE DATAFRAME
@@ -194,31 +279,32 @@ async def analyze_database(
         
         print(f"✅ Loaded {len(df)} rows from database")
         
-        # Create preview (5 rows)
-        preview = df.head(5).to_dict('records')
+        # Create preview (5 rows) and clean NaN values
+        preview_data = df.head(5).to_dict('records')
+        cleaned_preview = []
+        for row in preview_data:
+            cleaned_row = {}
+            for key, value in row.items():
+                if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    cleaned_row[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    cleaned_row[key] = value.isoformat()
+                else:
+                    cleaned_row[key] = value
+            cleaned_preview.append(cleaned_row)
         
         # Run analysis
-        results, exec_time = await orchestrator.analyze_dataframe(df, db_request.question)
+        results, exec_time = await orchestrator.analyze_dataframe(df, db_request.question or "")
         
-        # DEBUG: Print the structure of results
-        print("\n" + "="*60)
-        print("🗄️ DATABASE RESULTS STRUCTURE")
-        print("="*60)
-        print(f"Results keys: {results.keys()}")
+        # Ensure results is a dictionary
+        if results is None:
+            results = {}
         
-        # IMPORTANT: Don't flatten the insights - preserve the full structure
-        insights_data = results.get("insights", {})
-        raw_insights_data = results.get("raw_insights", {})
-        
-        print(f"Insights type: {type(insights_data)}")
-        print(f"Insights preview: {str(insights_data)[:200]}...")
-        print("="*60 + "\n")
-        
-        # Create the analysis_results structure - PRESERVE the original structure
+        # Create the analysis_results structure
         analysis_results = {
             "success": results.get("success", False),
-            "insights": insights_data,
-            "raw_insights": raw_insights_data,
+            "insights": results.get("insights", ""),
+            "raw_insights": results.get("raw_insights", {}),
             "results": results.get("results", {}),
             "plan": results.get("plan", {"plan": []}),
             "warnings": results.get("warnings", []),
@@ -231,18 +317,25 @@ async def analyze_database(
             "is_generic_overview": results.get("is_generic_overview", False)
         }
         
+        # Clean any NaN values from analysis_results
+        analysis_results = clean_for_json(analysis_results)
+        
+        # Return properly formatted response
         return FileUploadResponse(
-            filename="database_query",
+            filename=f"database_{table if 'table' in locals() else 'query'}",
             rows=len(df),
             columns=list(df.columns),
-            preview=preview,
+            preview=cleaned_preview,
             analysis_results=analysis_results
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/test-connection")
 @limiter.limit("30/minute")
@@ -269,142 +362,126 @@ async def test_database_connection(
             print(f"Query: {db_request.query[:100]}...")
         print(f"{'='*60}\n")
         
+        # STRIP trailing spaces from table name
+        table_name = db_request.table.strip() if db_request.table else None
+        
         # Build connection string with validation
         if db_request.db_type == 'postgresql':
             conn_string = f"postgresql://{db_request.username}:{db_request.password}@{db_request.host}:{db_request.port}/{db_request.database}"
         elif db_request.db_type == 'mysql':
             conn_string = f"mysql+pymysql://{db_request.username}:{db_request.password}@{db_request.host}:{db_request.port}/{db_request.database}"
         elif db_request.db_type == 'sqlite':
-            # ========== SQLITE PATH VALIDATION WITH ABSOLUTE PATH ==========
             import os
             
             original_path = db_request.database
-            print(f"📁 Original path: {original_path}")
+            print(f"📁 Original path from user: {original_path}")
             
-            # Convert to absolute path
-            if not os.path.isabs(original_path):
-                # Get the absolute path relative to current working directory
-                abs_path = os.path.abspath(original_path)
-                print(f"📁 Converted to absolute path: {abs_path}")
+            # Get absolute path and normalize
+            if os.path.isabs(original_path):
+                abs_path = os.path.normpath(original_path)
             else:
-                abs_path = original_path
-                print(f"📁 Using absolute path: {abs_path}")
+                abs_path = os.path.normpath(os.path.abspath(original_path))
             
-            # 1. Check for .db extension
-            if not abs_path.endswith('.db'):
+            print(f"📁 Absolute path: {abs_path}")
+            
+            # Check if file exists
+            if not os.path.exists(abs_path):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"SQLite file must end with .db extension. Got: {abs_path}"
+                    detail=f"SQLite database file not found: {abs_path}"
                 )
             
-            # 2. Get directory path
-            directory = os.path.dirname(abs_path)
-            
-            # 3. If directory is specified, check if it exists
-            if directory and not os.path.exists(directory):
+            # Check file permissions
+            if not os.access(abs_path, os.R_OK):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Directory does not exist: {directory}. Please create the directory first."
+                    detail=f"Cannot read SQLite file: {abs_path}"
                 )
             
-            # 4. Check if file exists and has proper permissions
-            file_exists = os.path.exists(abs_path)
-            if file_exists:
-                # File exists - check permissions
-                if not os.access(abs_path, os.R_OK):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cannot read SQLite file: {abs_path}. Check file permissions."
-                    )
-                if not os.access(abs_path, os.W_OK):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cannot write to SQLite file: {abs_path}. Check file permissions."
-                    )
-                print(f"✅ SQLite file exists and is accessible: {abs_path}")
-                print(f"📏 File size: {os.path.getsize(abs_path)} bytes")
-            else:
-                # File doesn't exist - check if we can create it
-                if directory and not os.access(directory, os.W_OK):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cannot write to directory: {directory}. Cannot create SQLite file."
-                    )
-                print(f"⚠️ SQLite file doesn't exist yet. It will be created when connecting: {abs_path}")
+            print(f"✅ SQLite file exists: {abs_path}")
+            print(f"📏 File size: {os.path.getsize(abs_path)} bytes")
             
-            # Update the database path to the absolute path
-            db_request.database = abs_path
-            conn_string = f"sqlite:///{abs_path}"
-            # ========== END SQLITE PATH VALIDATION ==========
+            # Convert backslashes to forward slashes
+            path_for_uri = abs_path.replace('\\', '/')
+            
+            # USE THE WORKING FORMAT - without uri=true
+            conn_string = f"sqlite:///{path_for_uri}?mode=ro"
+            print(f"🔌 Connection string: {conn_string}")
             
         else:
             raise ValueError(f"Unsupported database type: {db_request.db_type}")
-        
-        print(f"🔌 Connection string: {conn_string}")
         
         # Create connector and test connection
         connector = DatabaseConnector(conn_string)
         
         if not connector.test_connection():
             print("❌ Failed to connect to database")
-            
-            # Provide more specific error for SQLite
-            if db_request.db_type == 'sqlite':
-                db_path = db_request.database
-                if not os.path.exists(db_path):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cannot create SQLite database at: {db_path}. Check directory permissions."
-                    )
-                elif os.path.exists(db_path) and not os.access(db_path, os.W_OK):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Cannot write to SQLite database at: {db_path}. Check file permissions."
-                    )
-            
             raise HTTPException(status_code=400, detail="Failed to connect to database")
         
         print("✅ Successfully connected to database")
         
         # If table name provided, validate schema
-        if db_request.table and not db_request.use_query:
-            print(f"📋 Validating table: {db_request.table}")
+        if table_name and not db_request.use_query:
+            print(f"📋 Validating table: '{table_name}'")  # Quotes to show any hidden spaces
             
-            # ========== DATABASE-AGNOSTIC SIZE VALIDATION ==========
             with connector.engine.connect() as conn:
-                # Get column count based on database type
-                try:
-                    if db_request.db_type == 'sqlite':
-                        # SQLite uses PRAGMA table_info
-                        result = conn.execute(text(f"PRAGMA table_info({db_request.table})"))
-                        columns = result.fetchall()
-                        column_count = len(columns)
-                        print(f"📊 SQLite table has {column_count} columns")
-                    elif db_request.db_type == 'postgresql':
-                        # PostgreSQL uses information_schema
-                        result = conn.execute(text("""
-                            SELECT COUNT(*) 
-                            FROM information_schema.columns 
-                            WHERE table_name = :table_name
-                        """), {"table_name": db_request.table})
-                        column_count = result.scalar()
-                        print(f"📊 PostgreSQL table has {column_count} columns")
-                    elif db_request.db_type == 'mysql':
-                        # MySQL also uses information_schema
-                        result = conn.execute(text("""
-                            SELECT COUNT(*) 
-                            FROM information_schema.columns 
-                            WHERE table_name = :table_name
-                        """), {"table_name": db_request.table})
-                        column_count = result.scalar()
-                        print(f"📊 MySQL table has {column_count} columns")
-                    else:
-                        column_count = 0
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Could not access table '{db_request.table}'. Error: {str(e)}"
-                    )
+                # For SQLite, first check if any tables exist
+                if db_request.db_type == 'sqlite':
+                    # Check if there are any tables at all
+                    tables_result = conn.execute(text(
+                        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                    ))
+                    available_tables = [row[0] for row in tables_result]
+                    
+                    if not available_tables:
+                        return {
+                            "status": "warning",
+                            "message": f"Connected to SQLite database, but no tables found. Please ensure your database contains tables.",
+                            "tables_found": [],
+                            "database": abs_path
+                        }
+                    
+                    # Check if specific table exists
+                    result = conn.execute(text(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name"
+                    ), {"table_name": table_name})
+                    table_exists = result.fetchone()
+                    
+                    if not table_exists:
+                        tables_list = ", ".join(available_tables) if available_tables else "no tables found"
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Table '{table_name}' not found. Available tables: {tables_list}"
+                        )
+                    
+                    # Get column count
+                    result = conn.execute(text(f"PRAGMA table_info({table_name})"))
+                    columns = result.fetchall()
+                    column_count = len(columns)
+                    print(f"📊 SQLite table has {column_count} columns")
+                    
+                elif db_request.db_type == 'postgresql':
+                    # PostgreSQL validation
+                    result = conn.execute(text("""
+                        SELECT COUNT(*) 
+                        FROM information_schema.columns 
+                        WHERE table_name = :table_name
+                    """), {"table_name": table_name})
+                    column_count = result.scalar()
+                    print(f"📊 PostgreSQL table has {column_count} columns")
+                    
+                elif db_request.db_type == 'mysql':
+                    # MySQL validation
+                    result = conn.execute(text("""
+                        SELECT COUNT(*) 
+                        FROM information_schema.columns 
+                        WHERE table_name = :table_name
+                    """), {"table_name": table_name})
+                    column_count = result.scalar()
+                    print(f"📊 MySQL table has {column_count} columns")
+                    
+                else:
+                    column_count = 0
                 
                 # Define limits
                 MAX_COLUMNS = 1000
@@ -414,14 +491,18 @@ async def test_database_connection(
                         detail=f"Table has {column_count} columns. Maximum allowed is {MAX_COLUMNS}. Your table is too wide."
                     )
                 
-                # Get row count (works for all databases)
+                # Get row count - QUOTE the table name for PostgreSQL
                 try:
-                    result = conn.execute(text(f"SELECT COUNT(*) FROM {db_request.table}"))
+                    if db_request.db_type == 'postgresql':
+                        quoted_table = f'"{table_name}"'
+                        result = conn.execute(text(f"SELECT COUNT(*) FROM {quoted_table}"))
+                    else:
+                        result = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
                     row_count = result.scalar()
                 except Exception as e:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Could not query table '{db_request.table}'. Error: {str(e)}"
+                        detail=f"Could not query table '{table_name}'. Error: {str(e)}"
                     )
                 
                 MAX_ROWS = 100000
@@ -432,84 +513,121 @@ async def test_database_connection(
                     )
                 
                 print(f"✅ Size validation passed: {column_count} columns, {row_count} rows")
-            # ========== END SIZE VALIDATION ==========
-            
-            # Now it's safe to read a small sample for schema validation
-            try:
-                df = connector.fetch_query(f"SELECT * FROM {db_request.table} LIMIT 5")
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Could not read data from table '{db_request.table}'. Error: {str(e)}"
-                )
-            
-            if len(df) == 0:
+                
+                # Read sample for schema validation - QUOTE for PostgreSQL
+                try:
+                    if db_request.db_type == 'postgresql':
+                        quoted_table = f'"{table_name}"'
+                        df = connector.fetch_query(f"SELECT * FROM {quoted_table} LIMIT 5")
+                    else:
+                        df = connector.fetch_query(f"SELECT * FROM {table_name} LIMIT 5")
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Could not read data from table '{table_name}'. Error: {str(e)}"
+                    )
+                
+                if len(df) == 0:
+                    return {
+                        "status": "success", 
+                        "message": f"Connected to database but table '{table_name}' is empty",
+                        "rows_preview": 0,
+                        "columns": list(df.columns) if len(df.columns) > 0 else []
+                    }
+                
+                # Validate schema
+                required_columns = ['date', 'revenue']
+                df_columns_lower = [col.lower() for col in df.columns]
+                
+                missing = []
+                found_columns = {}
+                
+                for req_col in required_columns:
+                    if req_col in df_columns_lower:
+                        original_col = df.columns[df_columns_lower.index(req_col)]
+                        found_columns[req_col] = original_col
+                    else:
+                        missing.append(req_col)
+                
+                if missing:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Schema validation failed: Missing required columns: {', '.join(missing)}. Your table must contain 'date' and 'revenue' columns."
+                    )
+                
+                # Validate date column
+                date_col = found_columns['date']
+                try:
+                    pd.to_datetime(df[date_col], errors='raise')
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Schema validation failed: Column '{date_col}' contains invalid date formats."
+                    )
+                
+                # Validate revenue column
+                revenue_col = found_columns['revenue']
+                try:
+                    pd.to_numeric(df[revenue_col], errors='raise')
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Schema validation failed: Column '{revenue_col}' contains non-numeric values."
+                    )
+                
+                # Clean preview data
+                preview_data = df.head(3).to_dict('records')
+                cleaned_preview = []
+                for row in preview_data:
+                    cleaned_row = {}
+                    for key, value in row.items():
+                        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                            cleaned_row[key] = None
+                        elif isinstance(value, pd.Timestamp):
+                            cleaned_row[key] = value.isoformat()
+                        else:
+                            cleaned_row[key] = value
+                    cleaned_preview.append(cleaned_row)
+                
                 return {
                     "status": "success", 
-                    "message": f"Connected to database but table '{db_request.table}' is empty"
+                    "message": f"✅ Successfully connected! Table '{table_name}' has valid schema.",
+                    "rows_preview": len(df),
+                    "columns": list(df.columns),
+                    "preview": cleaned_preview,
+                    "found_columns": found_columns,
+                    "size_info": {
+                        "columns": column_count,
+                        "rows": row_count
+                    }
                 }
-            
-            # 🔐 VALIDATE SCHEMA
-            required_columns = ['date', 'revenue']
-            df_columns_lower = [col.lower() for col in df.columns]
-            
-            print(f"📊 Found columns: {df_columns_lower}")
-            
-            missing = []
-            for req_col in required_columns:
-                if req_col not in df_columns_lower:
-                    missing.append(req_col)
-            
-            if missing:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Schema validation failed: Missing required columns: {', '.join(missing)}. Your table must contain 'date' and 'revenue' columns."
-                )
-            
-            # Check date column can be parsed
-            date_col = df.columns[df_columns_lower.index('date')]
-            print(f"📅 Validating date column: '{date_col}'")
-            try:
-                pd.to_datetime(df[date_col], errors='raise')
-                print("✅ Date column valid")
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Schema validation failed: Column '{date_col}' contains invalid date formats. Error: {str(e)}"
-                )
-            
-            # Check revenue column is numeric
-            revenue_col = df.columns[df_columns_lower.index('revenue')]
-            print(f"💰 Validating revenue column: '{revenue_col}'")
-            try:
-                pd.to_numeric(df[revenue_col], errors='raise')
-                print("✅ Revenue column valid")
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Schema validation failed: Column '{revenue_col}' contains non-numeric values. Error: {str(e)}"
-                )
-            
-            return {
-                "status": "success", 
-                "message": f"✅ Successfully connected! Table '{db_request.table}' has valid schema.",
-                "rows_preview": len(df),
-                "columns": list(df.columns),
-                "size_info": {
-                    "columns": column_count,
-                    "rows": row_count
-                }
-            }
         
         # If custom query provided
         elif db_request.use_query and db_request.query:
             print(f"📝 Testing custom query")
             try:
                 df = connector.fetch_query(f"{db_request.query} LIMIT 5")
+                
+                # Clean preview data
+                preview_data = df.head(3).to_dict('records')
+                cleaned_preview = []
+                for row in preview_data:
+                    cleaned_row = {}
+                    for key, value in row.items():
+                        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                            cleaned_row[key] = None
+                        elif isinstance(value, pd.Timestamp):
+                            cleaned_row[key] = value.isoformat()
+                        else:
+                            cleaned_row[key] = value
+                    cleaned_preview.append(cleaned_row)
+                
                 return {
                     "status": "success", 
                     "message": f"✅ Query executed successfully. Found {len(df)} rows.",
-                    "rows_preview": len(df)
+                    "rows_preview": len(df),
+                    "columns": list(df.columns),
+                    "preview": cleaned_preview
                 }
             except Exception as e:
                 raise HTTPException(
@@ -518,7 +636,11 @@ async def test_database_connection(
                 )
         
         else:
-            return {"status": "success", "message": "✅ Successfully connected to database"}
+            # Just connection test, no table validation
+            return {
+                "status": "success", 
+                "message": "✅ Successfully connected to database"
+            }
             
     except HTTPException:
         raise
@@ -530,9 +652,9 @@ async def test_database_connection(
 # ==================== FILE UPLOAD ENDPOINT ====================
 
 @router.post("/upload", response_model=FileUploadResponse)
-@limiter.limit("10/minute")  # 10 uploads per minute
+@limiter.limit("10/minute")
 async def upload_file(
-    request: Request,  # Required for rate limiting
+    request: Request,
     file: UploadFile = File(...),
     question: Optional[str] = Form("")
 ):
@@ -568,17 +690,55 @@ async def upload_file(
         # 🔐 VALIDATE THE DATAFRAME
         validate_dataframe(df)
         
+        # Create preview (5 rows) and clean NaN values
+        preview_data = df.head(5).to_dict('records')
+        cleaned_preview = []
+        for row in preview_data:
+            cleaned_row = {}
+            for key, value in row.items():
+                if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    cleaned_row[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    cleaned_row[key] = value.isoformat()
+                else:
+                    cleaned_row[key] = value
+            cleaned_preview.append(cleaned_row)
+        
         # Create response with preview
         response = FileUploadResponse(
             filename=file.filename,
             rows=len(df),
             columns=list(df.columns),
-            preview=df.head(5).to_dict('records')
+            preview=cleaned_preview,
+            analysis_results={}  # Will be updated after analysis
         )
         
         # Run analysis
         results, exec_time = await orchestrator.analyze_dataframe(df, question or "")
-        response.analysis_results = results
+        
+        # Ensure results is a dictionary
+        if results is None:
+            results = {}
+        
+        # Create the analysis_results structure
+        analysis_results = {
+            "success": results.get("success", False),
+            "insights": results.get("insights", ""),
+            "raw_insights": results.get("raw_insights", {}),
+            "results": results.get("results", {}),
+            "plan": results.get("plan", {"plan": []}),
+            "warnings": results.get("warnings", []),
+            "mapping": results.get("mapping", {}),
+            "data_summary": results.get("data_summary", {
+                "rows": len(df),
+                "columns": list(df.columns)
+            }),
+            "execution_time": exec_time,
+            "is_generic_overview": results.get("is_generic_overview", False)
+        }
+        
+        # Clean any NaN values from analysis_results
+        response.analysis_results = clean_for_json(analysis_results)
         
         return response
         
@@ -595,20 +755,10 @@ async def upload_file(
 
 # ==================== GOOGLE SHEETS ENDPOINTS ====================
 
-class GoogleSheetsRequest(BaseModel):
-    question: str
-    sheet_config: dict
-
-
-class GoogleSheetsTestRequest(BaseModel):
-    sheet_id: str
-    sheet_range: Optional[str] = "A1:Z1000"
-
-
 @router.post("/google-sheets", response_model=FileUploadResponse)
-@limiter.limit("20/minute")  # 20 Google Sheets analyses per minute
+@limiter.limit("20/minute")
 async def analyze_google_sheets(
-    request: Request,  # Required for rate limiting
+    request: Request,
     sheets_request: GoogleSheetsRequest
 ):
     """
@@ -635,18 +785,53 @@ async def analyze_google_sheets(
         
         print(f"✅ Loaded {len(df)} rows from Google Sheets")
         
-        # Create preview
-        preview = df.head(5).to_dict('records')
+        # Create preview (5 rows) and clean NaN values
+        preview_data = df.head(5).to_dict('records')
+        cleaned_preview = []
+        for row in preview_data:
+            cleaned_row = {}
+            for key, value in row.items():
+                if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    cleaned_row[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    cleaned_row[key] = value.isoformat()
+                else:
+                    cleaned_row[key] = value
+            cleaned_preview.append(cleaned_row)
         
         # Run analysis
-        results, exec_time = await orchestrator.analyze_dataframe(df, sheets_request.question)
+        results, exec_time = await orchestrator.analyze_dataframe(df, sheets_request.question or "")
+        
+        # Ensure results is a dictionary
+        if results is None:
+            results = {}
+        
+        # Create the analysis_results structure
+        analysis_results = {
+            "success": results.get("success", False),
+            "insights": results.get("insights", ""),
+            "raw_insights": results.get("raw_insights", {}),
+            "results": results.get("results", {}),
+            "plan": results.get("plan", {"plan": []}),
+            "warnings": results.get("warnings", []),
+            "mapping": results.get("mapping", {}),
+            "data_summary": results.get("data_summary", {
+                "rows": len(df),
+                "columns": list(df.columns)
+            }),
+            "execution_time": exec_time,
+            "is_generic_overview": results.get("is_generic_overview", False)
+        }
+        
+        # Clean any NaN values from analysis_results
+        analysis_results = clean_for_json(analysis_results)
         
         return FileUploadResponse(
             filename=f"google_sheet_{sheet_id[:8]}",
             rows=len(df),
             columns=list(df.columns),
-            preview=preview,
-            analysis_results=results
+            preview=cleaned_preview,
+            analysis_results=analysis_results
         )
         
     except Exception as e:
@@ -680,8 +865,13 @@ async def test_google_sheets_connection(
         df_columns_lower = [col.lower() for col in df.columns]
         
         missing = []
+        found_columns = {}
+        
         for req_col in required_columns:
-            if req_col not in df_columns_lower:
+            if req_col in df_columns_lower:
+                original_col = df.columns[df_columns_lower.index(req_col)]
+                found_columns[req_col] = original_col
+            else:
                 missing.append(req_col)
         
         if missing:
@@ -691,7 +881,7 @@ async def test_google_sheets_connection(
             )
         
         # Check date column can be parsed
-        date_col = df.columns[df_columns_lower.index('date')]
+        date_col = found_columns['date']
         try:
             pd.to_datetime(df[date_col], errors='raise')
         except:
@@ -701,7 +891,7 @@ async def test_google_sheets_connection(
             )
         
         # Check revenue column is numeric
-        revenue_col = df.columns[df_columns_lower.index('revenue')]
+        revenue_col = found_columns['revenue']
         try:
             pd.to_numeric(df[revenue_col], errors='raise')
         except:
@@ -710,16 +900,26 @@ async def test_google_sheets_connection(
                 detail=f"Schema validation failed: Column '{revenue_col}' contains non-numeric values."
             )
         
-        # Convert DataFrame to dict and clean NaN values
+        # Clean preview data
         preview_data = df.head(3).to_dict('records')
-        cleaned_preview = clean_for_json(preview_data)
-        cleaned_columns = clean_for_json(list(df.columns))
+        cleaned_preview = []
+        for row in preview_data:
+            cleaned_row = {}
+            for key, value in row.items():
+                if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    cleaned_row[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    cleaned_row[key] = value.isoformat()
+                else:
+                    cleaned_row[key] = value
+            cleaned_preview.append(cleaned_row)
         
         return {
             "status": "success", 
             "message": f"Successfully connected! Found {len(df)} rows with valid schema.",
-            "columns": cleaned_columns,
-            "preview": cleaned_preview
+            "columns": list(df.columns),
+            "preview": cleaned_preview,
+            "found_columns": found_columns
         }
             
     except HTTPException:
@@ -727,7 +927,6 @@ async def test_google_sheets_connection(
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -813,7 +1012,6 @@ async def validate_file_schema(
         
         print(f"📊 DataFrame shape: {df.shape}")
         print(f"📋 Columns found: {list(df.columns)}")
-        print(f"🔍 First row: {df.iloc[0].to_dict() if len(df) > 0 else 'No data'}")
         
         # Check for required columns (case-insensitive)
         required_columns = ['date', 'revenue']
@@ -826,7 +1024,6 @@ async def validate_file_schema(
         
         for req_col in required_columns:
             if req_col in df_columns_lower:
-                # Find the original column name
                 original_col = df.columns[df_columns_lower.index(req_col)]
                 found_columns[req_col] = original_col
                 print(f"✅ Found '{req_col}' as column '{original_col}'")
@@ -845,13 +1042,10 @@ async def validate_file_schema(
         # Check date column can be parsed
         date_col = found_columns['date']
         print(f"📅 Validating date column: '{date_col}'")
-        print(f"📅 Sample date values: {df[date_col].head(3).tolist()}")
         
         try:
-            # Try to parse dates
             parsed_dates = pd.to_datetime(df[date_col], errors='coerce')
             invalid_dates = parsed_dates.isna().sum()
-            print(f"📅 Parsed dates: {parsed_dates.tolist()}")
             
             if invalid_dates > 0:
                 print(f"⚠️ Found {invalid_dates} invalid dates")
@@ -872,13 +1066,10 @@ async def validate_file_schema(
         # Check revenue column is numeric
         revenue_col = found_columns['revenue']
         print(f"💰 Validating revenue column: '{revenue_col}'")
-        print(f"💰 Sample revenue values: {df[revenue_col].head(3).tolist()}")
         
         try:
-            # Try to convert to numeric
             numeric_revenue = pd.to_numeric(df[revenue_col], errors='coerce')
             invalid_revenue = numeric_revenue.isna().sum()
-            print(f"💰 Parsed revenue: {numeric_revenue.tolist()}")
             
             if invalid_revenue > 0:
                 print(f"⚠️ Found {invalid_revenue} non-numeric revenue values")
@@ -902,7 +1093,17 @@ async def validate_file_schema(
         
         # Clean the preview data to remove NaN values
         preview_data = df.head(2).to_dict('records')
-        cleaned_preview = clean_for_json(preview_data)
+        cleaned_preview = []
+        for row in preview_data:
+            cleaned_row = {}
+            for key, value in row.items():
+                if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                    cleaned_row[key] = None
+                elif isinstance(value, pd.Timestamp):
+                    cleaned_row[key] = value.isoformat()
+                else:
+                    cleaned_row[key] = value
+            cleaned_preview.append(cleaned_row)
         
         return {
             "valid": True,

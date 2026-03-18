@@ -49,93 +49,96 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
     }
   };
 
- const handleTestConnection = async () => {
-  if (!config.sheet_id) {
-    setValidationError('Sheet ID is required');
-    return;
-  }
-
-  const extractedId = extractSheetId(config.sheet_id);
-  if (!validateSheetId(extractedId)) {
-    setValidationError('Invalid Sheet ID format');
-    return;
-  }
-
-  setTesting(true);
-  setTestResult(null);
-  setValidationError(null);
-  
-  try {
-    const result = await onTestConnection({ 
-      ...config, 
-      sheet_id: extractedId 
-    });
-    
-    // Check for specific success scenarios
-    let successMessage = '✅ Successfully connected!';
-    if (result.message) {
-      successMessage = result.message;
-    } else if (result.rows) {
-      successMessage = `✅ Connected! Found ${result.rows} rows.`;
+  const handleTestConnection = async () => {
+    if (!config.sheet_id) {
+      setValidationError('Sheet ID is required');
+      return;
     }
+
+    const extractedId = extractSheetId(config.sheet_id);
+    if (!validateSheetId(extractedId)) {
+      setValidationError('Invalid Sheet ID format');
+      return;
+    }
+
+    setTesting(true);
+    setTestResult(null);
+    setValidationError(null);
     
-    setTestResult({ 
-      success: true, 
-      message: successMessage
-    });
-    setConnectionSuccess(true);
-    
-    // Pass the config to parent
-    onConnect({ ...config, sheet_id: extractedId });
-    
-  } catch (error) {
-    console.error("Google Sheets connection error:", error);
-    
-    // Extract detailed error message
-    let errorMessage = '❌ Connection failed';
-    
-    if (error.response?.data?.detail) {
-      const detail = error.response.data.detail;
+    try {
+      const result = await onTestConnection({ 
+        ...config, 
+        sheet_id: extractedId 
+      });
       
-      // Handle different types of error details
-      if (typeof detail === 'string') {
-        errorMessage = detail;
-      } else if (typeof detail === 'object') {
-        // Handle validation errors
-        if (detail.msg) {
-          errorMessage = detail.msg;
-        } else if (detail.message) {
-          errorMessage = detail.message;
-        } else {
-          errorMessage = JSON.stringify(detail);
+      if (result && result.success) {
+        let successMessage = '✅ Successfully connected!';
+        if (result.data?.message) {
+          successMessage = result.data.message;
+        } else if (result.data?.rows) {
+          successMessage = `✅ Connected! Found ${result.data.rows} rows.`;
         }
+        
+        setTestResult({ 
+          success: true, 
+          message: successMessage
+        });
+        setConnectionSuccess(true);
+        
+        // Pass the config to parent with success flag
+        onConnect({ ...config, sheet_id: extractedId }, true);
+      } else {
+        throw new Error('Connection failed');
       }
       
-      // Make error messages more user-friendly
-      if (errorMessage.includes('404')) {
-        errorMessage = '❌ Sheet not found. Check the Sheet ID and sharing settings.';
-      } else if (errorMessage.includes('403')) {
-        errorMessage = '❌ Permission denied. Make sure the sheet is shared with your service account.';
-      } else if (errorMessage.includes('date')) {
-        errorMessage = '❌ Schema validation failed: Date column contains invalid formats.';
-      } else if (errorMessage.includes('revenue')) {
-        errorMessage = '❌ Schema validation failed: Revenue column contains non-numeric values.';
-      } else if (errorMessage.includes('Missing required columns')) {
-        errorMessage = '❌ Missing required columns. Your sheet must contain "date" and "revenue" columns.';
+    } catch (error) {
+      console.error("Google Sheets connection error:", error);
+      
+      let errorMessage = '❌ Connection failed';
+      
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        
+        if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else if (typeof detail === 'object') {
+          if (detail.msg) {
+            errorMessage = detail.msg;
+          } else if (detail.message) {
+            errorMessage = detail.message;
+          } else {
+            errorMessage = JSON.stringify(detail);
+          }
+        }
+        
+        // Make error messages more user-friendly
+        if (errorMessage.includes('404')) {
+          errorMessage = '❌ Sheet not found. Check the Sheet ID and sharing settings.';
+        } else if (errorMessage.includes('403')) {
+          errorMessage = '❌ Permission denied. Make sure the sheet is shared with your service account.';
+        } else if (errorMessage.includes('date')) {
+          errorMessage = '❌ Schema validation failed: Date column contains invalid formats.';
+        } else if (errorMessage.includes('revenue')) {
+          errorMessage = '❌ Schema validation failed: Revenue column contains non-numeric values.';
+        } else if (errorMessage.includes('Missing required columns')) {
+          errorMessage = '❌ Missing required columns. Your sheet must contain "date" and "revenue" columns.';
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
       }
-    } else if (error.message) {
-      errorMessage = error.message;
+      
+      setTestResult({ 
+        success: false, 
+        message: errorMessage
+      });
+      setConnectionSuccess(false);
+      // Pass false to indicate invalid connection
+      onConnect(config, false);
+    } finally {
+      setTesting(false);
     }
-    
-    setTestResult({ 
-      success: false, 
-      message: errorMessage
-    });
-    setConnectionSuccess(false);
-  } finally {
-    setTesting(false);
-  }
-};
+  };
+
   const handleReset = () => {
     setConnectionSuccess(false);
     setTestResult(null);

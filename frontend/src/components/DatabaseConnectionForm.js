@@ -98,70 +98,89 @@ const DatabaseConnectionForm = ({ onConnect, onTestConnection, onClearResults, l
     setShowPassword(!showPassword);
   };
 
-const handleTestConnection = async () => {
-  if (!validateConfig()) return;
+  const handleTestConnection = async () => {
+    if (!onTestConnection) {
+      console.error("❌ onTestConnection prop is missing!");
+      setTestResult({ 
+        success: false, 
+        message: "Internal error: Test connection function not available" 
+      });
+      return;
+    }
+    
+    if (!validateConfig()) return;
 
-  setTesting(true);
-  setTestResult(null);
-  setValidationError(null);
-  
-  try {
-    // Prepare the config for the API
-    const apiConfig = {
-      db_type: config.db_type,
-      host: config.host,
-      port: config.port,
-      username: config.username,
-      password: config.password,
-      table: config.use_query ? null : config.table,
-      query: config.use_query ? config.query : null,
-      use_query: config.use_query
-    };
+    setTesting(true);
+    setTestResult(null);
+    setValidationError(null);
     
-    // Handle SQLite specially - just pass the filename, not the full path
-    if (config.db_type === 'sqlite') {
-      // Extract just the filename from the path
-      const fileName = config.database.split('\\').pop().split('/').pop();
-      apiConfig.database = fileName || config.database;
-    } else {
-      apiConfig.database = config.database;
-    }
-    
-    const result = await onTestConnection(apiConfig);
-    
-    setTestResult({ 
-      success: true, 
-      message: result.message || '✅ Successfully connected!' 
-    });
-    setConnectionSuccess(true);
-    onConnect(config);
-    
-  } catch (error) {
-    console.error("Connection error:", error);
-    
-    // Extract error message safely
-    let errorMessage = '❌ Connection failed';
-    if (error.response?.data?.detail) {
-      if (typeof error.response.data.detail === 'string') {
-        errorMessage = error.response.data.detail;
-      } else if (typeof error.response.data.detail === 'object') {
-        errorMessage = error.response.data.detail.msg || 
-                      error.response.data.detail.message || 
-                      JSON.stringify(error.response.data.detail);
+    try {
+      // Prepare the config for the API
+      const apiConfig = {
+        db_type: config.db_type,
+        host: config.host,
+        port: config.port,
+        username: config.username,
+        password: config.password,
+        table: config.use_query ? null : config.table,
+        query: config.use_query ? config.query : null,
+        use_query: config.use_query,
+        database: config.database
+      };
+      
+      console.log("📤 Sending test connection request:", apiConfig);
+      
+      const result = await onTestConnection(apiConfig);
+      console.log("📥 Test connection response:", result);
+      
+      if (result && result.success) {
+        let successMessage = '✅ Successfully connected!';
+        if (result.data?.message) {
+          successMessage = result.data.message;
+        } else if (result.data?.status === 'success') {
+          successMessage = result.data.message || '✅ Connection successful!';
+        }
+        
+        setTestResult({ 
+          success: true, 
+          message: successMessage
+        });
+        setConnectionSuccess(true);
+        // Pass true to indicate valid connection
+        onConnect(config, true);
+      } else {
+        throw new Error('Connection failed');
       }
-    } else if (error.message) {
-      errorMessage = error.message;
+      
+    } catch (error) {
+      console.error("❌ Connection error:", error);
+      
+      let errorMessage = '❌ Connection failed';
+      
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else if (typeof detail === 'object') {
+          errorMessage = detail.msg || detail.message || JSON.stringify(detail);
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      setTestResult({ 
+        success: false, 
+        message: errorMessage
+      });
+      setConnectionSuccess(false);
+      // Pass false to indicate invalid connection
+      onConnect(config, false);
+    } finally {
+      setTesting(false);
     }
-    
-    setTestResult({ 
-      success: false, 
-      message: errorMessage
-    });
-    setConnectionSuccess(false);
-  } finally {
-    setTesting(false);
-  }
-};
+  };
 
   const handleReset = () => {
     setConnectionSuccess(false);
