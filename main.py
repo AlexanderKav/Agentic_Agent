@@ -72,17 +72,17 @@ else:
     # OPTION 2: Excel File
 #df = loader.load('csv', 'data.xlsx')  # CSV connector handles both
     
-    # OPTION 3: Google Sheets
-#df = loader.load('google_sheets', {
-         #'sheet_id': os.getenv('SHEET_ID'),
-         #'range': 'A1:Z1000'
-     #})
+      #OPTION 3: Google Sheets
+df = loader.load('google_sheets', {
+         'sheet_id': os.getenv('SHEET_ID'),
+         'range': 'A1:Z1000'
+     })
     
     # OPTION 4: Docker PostgreSQL Database
-df = loader.load('database', {
-        'connection_string': 'postgresql://postgres:testpass@localhost:5432/testdb',
-        'table': 'sales'  # or use 'query': 'SELECT * FROM sales'
-    })
+#df = loader.load('database', {
+ #       'connection_string': 'postgresql://postgres:testpass@localhost:5432/testdb',
+  #      'table': 'sales'  # or use 'query': 'SELECT * FROM sales'
+   # })
     
     # OPTION 5: SQLite Database
     # df = loader.load('database', {

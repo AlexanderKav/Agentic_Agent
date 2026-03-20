@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 from datetime import datetime
+from dotenv import load_dotenv
 import os
 
 # Rate limiting imports
@@ -15,6 +16,8 @@ from slowapi.errors import RateLimitExceeded
 from app.api.v1.endpoints import analysis, monitoring
 from app.api.v1.models.responses import HealthResponse
 
+from app.api.v1.endpoints import auth, email
+load_dotenv()
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
@@ -26,6 +29,10 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
+
+
+app.include_router(auth.router)
+app.include_router(email.router)
 
 # Set up rate limiter
 app.state.limiter = limiter

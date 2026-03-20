@@ -68,3 +68,31 @@ sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 
 slowapi>=0.1.9
+
+# Database
+DATABASE_URL=sqlite:///./agentic_analyst.db
+
+# JWT
+SECRET_KEY=your-secret-key-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# Email (Gmail example)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=Agentic-Analyst
+FROM_EMAIL=alexkavanagh6@gmail.com
+
+# Authentication
+pyjwt==2.8.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+email-validator==2.1.0
+
+# Email
+aiosmtplib==2.0.1
+jinja2==3.1.2
+
+argon2-cffi==23.1.0
+passlib[argon2]==1.7.4

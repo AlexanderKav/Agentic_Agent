@@ -1,5 +1,5 @@
 # app/api/v1/endpoints/analysis.py
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request, Depends
 from typing import Optional
 import pandas as pd
 import tempfile
@@ -8,8 +8,10 @@ import time
 import re
 import math
 import numpy as np
-from sqlalchemy import text 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
+from datetime import datetime
 
 # Rate limiting imports
 from slowapi import Limiter
@@ -20,6 +22,10 @@ from app.api.v1.models.requests import AnalysisRequest, DatabaseConnectionReques
 from app.api.v1.models.responses import AnalysisResponse, FileUploadResponse, HealthResponse
 from app.core.analysis import AnalysisOrchestrator
 from app.core.data_source import DataSourceHandler
+from app.core.database import get_db
+from app.api.v1.models.analysis import AnalysisHistory
+from app.api.v1.models.user import User
+from app.api.v1.endpoints.auth import get_current_user
 from connectors.database_connector import DatabaseConnector
 from connectors.google_sheets import GoogleSheetsConnector
 from pydantic import BaseModel
@@ -79,9 +85,8 @@ def validate_database_config(config: dict):
     # 1. Validate table name (if provided)
     table_name = config.get('table', '')
     if table_name:
-        # Strip whitespace first
+        # Strip whitespace
         table_name = table_name.strip()
-        # Update the config with stripped value
         config['table'] = table_name
         
         if db_type == 'postgresql':
@@ -91,9 +96,8 @@ def validate_database_config(config: dict):
                     status_code=400,
                     detail=f"Invalid PostgreSQL table name '{table_name}'. Use only letters, numbers, and underscores."
                 )
-
         elif db_type == 'mysql':
-            # MySQL: same as PostgreSQL but also allows $ and 
+            # MySQL: same as PostgreSQL but also allows $
             if not re.match(r'^[a-zA-Z0-9_$]+$', table_name):
                 raise HTTPException(
                     status_code=400,
@@ -185,7 +189,9 @@ def validate_dataframe(df: pd.DataFrame):
 @limiter.limit("20/minute")
 async def analyze_database(
     request: Request,
-    db_request: DatabaseConnectionRequest
+    db_request: DatabaseConnectionRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Connect to a database and analyze data
@@ -201,6 +207,7 @@ async def analyze_database(
         print(f"{'='*60}")
         print(f"Database type: {config.get('db_type')}")
         print(f"Question: {db_request.question[:50] if db_request.question else 'No question (overview)'}")
+        print(f"User: {current_user.username} (ID: {current_user.id})")
         print(f"{'='*60}\n")
         
         # Build connection string based on database type
@@ -262,16 +269,13 @@ async def analyze_database(
             print(f"📝 Executing custom query")
             df = connector.fetch_query(config['query'])
         else:
-            # STRIP trailing spaces from table name
             table = config.get('table')
             if table:
                 table = table.strip()
-                config['table'] = table  # Update config with stripped value
-            
+                config['table'] = table
             if not table:
                 raise HTTPException(status_code=400, detail="Table name is required")
-            
-            print(f"📋 Fetching table: '{table}'")  # Quotes to show any hidden spaces
+            print(f"📋 Fetching table: '{table}'")
             df = connector.fetch_table(table)
         
         # 🔐 VALIDATE THE DATAFRAME
@@ -317,8 +321,73 @@ async def analyze_database(
             "is_generic_overview": results.get("is_generic_overview", False)
         }
         
-        # Clean any NaN values from analysis_results
-        analysis_results = clean_for_json(analysis_results)
+        # Create data_source dictionary (clean this too!)
+        data_source = {
+            "db_type": db_type,
+            "table": config.get('table') if not config.get('use_query') else None,
+            "query": config.get('query')[:100] if config.get('use_query') and config.get('query') else None,
+            "database": config.get('database'),
+            "host": config.get('host') if db_type != 'sqlite' else None
+        }
+        
+        # DEEP CLEANING FUNCTION
+        def deep_clean(obj):
+            """Recursively clean all objects for JSON serialization"""
+            if obj is None:
+                return None
+            # Handle primitive types
+            if isinstance(obj, (str, int, float, bool)):
+                return obj
+            # Handle numpy types
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                if np.isnan(obj) or np.isinf(obj):
+                    return None
+                return float(obj)
+            # Handle datetime/timestamp types
+            if isinstance(obj, (pd.Timestamp, datetime)):
+                return obj.isoformat()
+            # Handle pandas series
+            if isinstance(obj, pd.Series):
+                return deep_clean(obj.to_dict())
+            # Handle dictionaries
+            if isinstance(obj, dict):
+                cleaned = {}
+                for k, v in obj.items():
+                    # Ensure keys are strings
+                    str_key = str(k) if not isinstance(k, (str, int, float, bool)) else k
+                    cleaned[str_key] = deep_clean(v)
+                return cleaned
+            # Handle lists/tuples/sets
+            if isinstance(obj, (list, tuple, set)):
+                return [deep_clean(item) for item in obj]
+            # Fallback: convert to string
+            try:
+                return str(obj)
+            except:
+                return None
+        
+        # Clean both the results and data_source
+        print("🧹 Deep cleaning analysis results...")
+        cleaned_results = deep_clean(analysis_results)
+        cleaned_data_source = deep_clean(data_source)
+        
+        # Verify cleaning was successful
+        print("✅ Deep cleaning complete")
+        
+        # Save to history with cleaned data
+        history = AnalysisHistory(
+            user_id=current_user.id,
+            analysis_type="database",
+            question=db_request.question or "General Overview",
+            results=cleaned_results,
+            data_source=cleaned_data_source
+        )
+        db.add(history)
+        db.commit()
+        
+        print(f"💾 Analysis saved to history (ID: {history.id})")
         
         # Return properly formatted response
         return FileUploadResponse(
@@ -326,7 +395,7 @@ async def analyze_database(
             rows=len(df),
             columns=list(df.columns),
             preview=cleaned_preview,
-            analysis_results=analysis_results
+            analysis_results=cleaned_results
         )
         
     except HTTPException:
@@ -341,7 +410,8 @@ async def analyze_database(
 @limiter.limit("30/minute")
 async def test_database_connection(
     request: Request,
-    db_request: DatabaseTestRequest
+    db_request: DatabaseTestRequest,
+    current_user: User = Depends(get_current_user)  # Optional: track who tests connections
 ):
     """
     Test database connection and validate schema without running analysis
@@ -356,13 +426,13 @@ async def test_database_connection(
         print(f"Host: {db_request.host}")
         print(f"Port: {db_request.port}")
         print(f"Username: {db_request.username}")
-        print(f"Password: {'*' * len(db_request.password) if db_request.password else 'None'}")
+        print(f"User: {current_user.username} (ID: {current_user.id})")
         print(f"Use query: {db_request.use_query}")
         if db_request.use_query:
             print(f"Query: {db_request.query[:100]}...")
         print(f"{'='*60}\n")
         
-        # STRIP trailing spaces from table name
+        # Strip table name
         table_name = db_request.table.strip() if db_request.table else None
         
         # Build connection string with validation
@@ -422,7 +492,7 @@ async def test_database_connection(
         
         # If table name provided, validate schema
         if table_name and not db_request.use_query:
-            print(f"📋 Validating table: '{table_name}'")  # Quotes to show any hidden spaces
+            print(f"📋 Validating table: '{table_name}'")
             
             with connector.engine.connect() as conn:
                 # For SQLite, first check if any tables exist
@@ -649,6 +719,7 @@ async def test_database_connection(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # ==================== FILE UPLOAD ENDPOINT ====================
 
 @router.post("/upload", response_model=FileUploadResponse)
@@ -656,7 +727,9 @@ async def test_database_connection(
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
-    question: Optional[str] = Form("")
+    question: Optional[str] = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Upload a file (CSV/Excel) and analyze it"""
     temp_file_path = None
@@ -680,6 +753,8 @@ async def upload_file(
                 status_code=400,
                 detail=f"File type not allowed. Allowed: {', '.join(allowed_extensions)}"
             )
+        
+        print(f"📁 File upload from user {current_user.username}: {file.filename}")
         
         # Save and scan file
         temp_file_path = await DataSourceHandler.save_upload_file(file)
@@ -710,7 +785,7 @@ async def upload_file(
             rows=len(df),
             columns=list(df.columns),
             preview=cleaned_preview,
-            analysis_results={}  # Will be updated after analysis
+            analysis_results={}
         )
         
         # Run analysis
@@ -737,9 +812,73 @@ async def upload_file(
             "is_generic_overview": results.get("is_generic_overview", False)
         }
         
-        # Clean any NaN values from analysis_results
-        response.analysis_results = clean_for_json(analysis_results)
+        # DEEP CLEAN - recursively clean all Timestamp objects
+        print("🧹 Deep cleaning analysis_results for JSON serialization...")
         
+        def deep_clean_for_json(obj):
+            """Even more aggressive cleaning for JSON serialization"""
+            if obj is None:
+                return None
+            elif isinstance(obj, (str, int, float, bool)):
+                return obj
+            elif isinstance(obj, (np.integer, np.floating)):
+                return float(obj) if isinstance(obj, np.floating) else int(obj)
+            elif isinstance(obj, (pd.Timestamp, datetime)):
+                return obj.isoformat()
+            elif isinstance(obj, dict):
+                return {str(k): deep_clean_for_json(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple, set)):
+                return [deep_clean_for_json(item) for item in obj]
+            elif isinstance(obj, pd.Series):
+                return deep_clean_for_json(obj.to_dict())
+            elif isinstance(obj, pd.DataFrame):
+                return deep_clean_for_json(obj.to_dict('records'))
+            else:
+                # Try to convert to string as last resort
+                try:
+                    return str(obj)
+                except:
+                    return None
+        
+        cleaned_results = deep_clean_for_json(analysis_results)
+        
+        # Verify no Timestamp objects remain
+        def check_for_timestamps(obj, path=""):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    check_for_timestamps(v, f"{path}.{k}")
+            elif isinstance(obj, (list, tuple)):
+                for i, item in enumerate(obj):
+                    check_for_timestamps(item, f"{path}[{i}]")
+            elif isinstance(obj, pd.Timestamp):
+                print(f"⚠️ Found Timestamp at {path}: {obj}")
+                return True
+            return False
+        
+        if check_for_timestamps(cleaned_results):
+            print("❌ Timestamp objects still present after cleaning!")
+        else:
+            print("✅ No Timestamp objects found - safe to save to database")
+        
+        # Save to history
+        history = AnalysisHistory(
+            user_id=current_user.id,
+            analysis_type="file",
+            question=question or "General Overview",
+            results=cleaned_results,  # Use deeply cleaned results
+            data_source={
+                "filename": file.filename,
+                "file_type": file_type,
+                "rows": len(df),
+                "columns": list(df.columns)
+            }
+        )
+        db.add(history)
+        db.commit()
+        
+        print(f"💾 Analysis saved to history (ID: {history.id})")
+        
+        response.analysis_results = cleaned_results
         return response
         
     except HTTPException:
@@ -759,7 +898,9 @@ async def upload_file(
 @limiter.limit("20/minute")
 async def analyze_google_sheets(
     request: Request,
-    sheets_request: GoogleSheetsRequest
+    sheets_request: GoogleSheetsRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Connect to Google Sheets and analyze data
@@ -767,6 +908,7 @@ async def analyze_google_sheets(
     try:
         config = sheets_request.sheet_config
         print(f"📊 Google Sheets analysis requested for: {config.get('sheet_id')}")
+        print(f"User: {current_user.username} (ID: {current_user.id})")
         
         # Get credentials path from environment
         creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
@@ -823,8 +965,26 @@ async def analyze_google_sheets(
             "is_generic_overview": results.get("is_generic_overview", False)
         }
         
-        # Clean any NaN values from analysis_results
+        # Clean any NaN values and Timestamps from analysis_results
         analysis_results = clean_for_json(analysis_results)
+        
+        # Save to history
+        history = AnalysisHistory(
+            user_id=current_user.id,
+            analysis_type="google_sheets",
+            question=sheets_request.question or "General Overview",
+            results=analysis_results,  # Now clean!
+            data_source={
+                "sheet_id": sheet_id[:8] + "...",  # Truncate for privacy
+                "sheet_range": sheet_range,
+                "rows": len(df),
+                "columns": list(df.columns)
+            }
+        )
+        db.add(history)
+        db.commit()
+        
+        print(f"💾 Analysis saved to history (ID: {history.id})")
         
         return FileUploadResponse(
             filename=f"google_sheet_{sheet_id[:8]}",
@@ -844,7 +1004,8 @@ async def analyze_google_sheets(
 @limiter.limit("30/minute")
 async def test_google_sheets_connection(
     request: Request,
-    sheets_request: GoogleSheetsTestRequest
+    sheets_request: GoogleSheetsTestRequest,
+    current_user: User = Depends(get_current_user)  # Optional: track who tests
 ):
     """
     Test Google Sheets connection and validate schema
@@ -853,6 +1014,8 @@ async def test_google_sheets_connection(
         creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         if not creds_path:
             raise HTTPException(status_code=500, detail="Google credentials not configured")
+        
+        print(f"🔍 Google Sheets test by user {current_user.username}: {sheets_request.sheet_id[:8]}...")
         
         connector = GoogleSheetsConnector(sheets_request.sheet_id, sheets_request.sheet_range)
         df = connector.fetch_sheet()
@@ -930,6 +1093,59 @@ async def test_google_sheets_connection(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== HISTORY ENDPOINTS ====================
+
+@router.get("/history")
+async def get_analysis_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = 10,
+    offset: int = 0
+):
+    """Get user's analysis history"""
+    history = db.query(AnalysisHistory).filter(
+        AnalysisHistory.user_id == current_user.id
+    ).order_by(
+        AnalysisHistory.created_at.desc()
+    ).offset(offset).limit(limit).all()
+    
+    return [
+        {
+            "id": h.id,
+            "type": h.analysis_type,
+            "question": h.question,
+            "created_at": h.created_at.isoformat(),
+            "data_source": h.data_source
+        }
+        for h in history
+    ]
+
+
+@router.get("/history/{history_id}")
+async def get_analysis_by_id(
+    history_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get specific analysis by ID"""
+    analysis = db.query(AnalysisHistory).filter(
+        AnalysisHistory.id == history_id,
+        AnalysisHistory.user_id == current_user.id
+    ).first()
+    
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    
+    return {
+        "id": analysis.id,
+        "type": analysis.analysis_type,
+        "question": analysis.question,
+        "results": analysis.results,
+        "data_source": analysis.data_source,
+        "created_at": analysis.created_at.isoformat()
+    }
+
+
 # ==================== CHART & HEALTH ENDPOINTS ====================
 
 @router.get("/chart/{filename}")
@@ -963,7 +1179,8 @@ async def health_check():
 @limiter.limit("30/minute")
 async def validate_file_schema(
     request: Request,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)  # Optional: track who validates
 ):
     """
     Validate file schema without running full analysis
@@ -972,6 +1189,7 @@ async def validate_file_schema(
     try:
         print(f"\n{'='*60}")
         print(f"🔍 VALIDATING FILE: {file.filename}")
+        print(f"User: {current_user.username}")
         print(f"📏 File size: {file.size} bytes")
         print(f"📁 Content type: {file.content_type}")
         print(f"{'='*60}")

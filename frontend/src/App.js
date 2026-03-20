@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import {
   Container,
   AppBar,
@@ -10,7 +11,13 @@ import {
   Snackbar,
   Tabs,
   Tab,
-  Paper
+  Paper,
+  IconButton,
+  Menu,
+  MenuItem,
+  Avatar,
+  Button,
+  Badge
 } from '@mui/material';
 import FileUpload from './components/FileUpload';
 import DatabaseConnectionForm from './components/DatabaseConnectionForm';
@@ -18,18 +25,30 @@ import GoogleSheetsConnectionForm from './components/GoogleSheetsConnectionForm'
 import QuestionInput from './components/QuestionInput';
 import DataPreview from './components/DataPreview';
 import ResultsDisplay from './components/ResultsDisplay';
+import Login from './components/Login';
+import LoginPage from './components/LoginPage';
+import HistoryDrawer from './components/HistoryDrawer';
+import ProtectedRoute from './components/ProtectedRoute';
+import VerificationSuccess from './components/VerificationSuccess';
 import UploadIcon from '@mui/icons-material/CloudUpload';
 import DatabaseIcon from '@mui/icons-material/Storage';
 import GoogleIcon from '@mui/icons-material/Google';
+import HistoryIcon from '@mui/icons-material/History';
+import EmailIcon from '@mui/icons-material/Email';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { 
   uploadFile, 
   analyzeDatabase, 
   testDatabaseConnection,
   analyzeGoogleSheets,
-  testGoogleSheetsConnection 
+  testGoogleSheetsConnection,
+  getAnalysisById,
+  sendAnalysisEmail
 } from './services/api';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-function App() {
+// Main app content component (protected)
+function DashboardContent() {
   const [tabValue, setTabValue] = useState(0);
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -38,13 +57,84 @@ function App() {
   const [error, setError] = useState(null);
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [userQuestion, setUserQuestion] = useState('');
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   
-  // Track if data source is valid and ready for questions
   const [dataSourceReady, setDataSourceReady] = useState(false);
-  
-  // Store connection configs
   const [dbConfig, setDbConfig] = useState(null);
   const [sheetsConfig, setSheetsConfig] = useState(null);
+  
+  const { user, logout, isAuthenticated, refreshUser } = useAuth();
+
+  // Listen for verification messages from the verification tab
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data === 'email-verified') {
+        // Refresh user data to get updated verification status
+        refreshUser();
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [refreshUser]);
+
+  const handleMenu = (event) => setAnchorEl(event.currentTarget);
+  const handleMenuClose = () => setAnchorEl(null);
+
+  const handleLogout = () => {
+    logout();
+    handleMenuClose();
+    handleClearResults();
+  };
+
+  const handleHistoryOpen = () => {
+    setHistoryOpen(true);
+    handleMenuClose();
+  };
+
+  const handleHistoryClose = () => setHistoryOpen(false);
+
+  const handleLoadHistoryItem = async (id) => {
+    try {
+      setLoading(true);
+      const analysis = await getAnalysisById(id);
+      setResults(analysis.results);
+      setUserQuestion(analysis.question);
+      setHistoryOpen(false);
+    } catch (err) {
+      setError('Failed to load analysis');
+      setOpenSnackbar(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailResults = async () => {
+    if (!user?.email) {
+      setError('No email address associated with your account');
+      setOpenSnackbar(true);
+      return;
+    }
+
+    setEmailSending(true);
+    try {
+      await sendAnalysisEmail(user.email);
+      setEmailSent(true);
+      setTimeout(() => setEmailSent(false), 3000);
+    } catch (err) {
+      setError('Failed to send email');
+      setOpenSnackbar(true);
+    } finally {
+      setEmailSending(false);
+    }
+  };
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -126,31 +216,22 @@ function App() {
     try {
       let response;
       
-      if (tabValue === 0) {  // File Upload
-        if (!selectedFile) {
-          throw new Error('Please select a file first');
-        }
+      if (tabValue === 0) {
+        if (!selectedFile) throw new Error('Please select a file first');
         response = await uploadFile(selectedFile, question);
         setPreview(response.preview);
         setResults(response.analysis_results);
-        
-      } else if (tabValue === 1) {  // Database
-        if (!dbConfig) {
-          throw new Error('Please configure database connection first');
-        }
+      } else if (tabValue === 1) {
+        if (!dbConfig) throw new Error('Please configure database connection first');
         response = await analyzeDatabase(question, dbConfig);
         setPreview(response.preview);
         setResults(response.analysis_results);
-        
-      } else {  // Google Sheets
-        if (!sheetsConfig) {
-          throw new Error('Please configure Google Sheets connection first');
-        }
+      } else {
+        if (!sheetsConfig) throw new Error('Please configure Google Sheets connection first');
         response = await analyzeGoogleSheets(question, sheetsConfig);
         setPreview(response.preview);
         setResults(response.analysis_results);
       }
-      
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Analysis failed');
       setOpenSnackbar(true);
@@ -161,11 +242,8 @@ function App() {
     }
   };
 
-  const handleCloseSnackbar = () => {
-    setOpenSnackbar(false);
-  };
+  const handleCloseSnackbar = () => setOpenSnackbar(false);
 
-  // Determine if we have a valid data source configured
   const hasValidDataSource = 
     (tabValue === 0 && selectedFile) || 
     (tabValue === 1 && dbConfig && dataSourceReady) || 
@@ -175,9 +253,45 @@ function App() {
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
             🤖 Agentic Analyst
           </Typography>
+          
+          {isAuthenticated ? (
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <IconButton color="inherit" onClick={() => setHistoryOpen(true)} sx={{ mr: 1 }}>
+                <Badge color="secondary" variant="dot" invisible={false}>
+                  <HistoryIcon />
+                </Badge>
+              </IconButton>
+              
+              <IconButton onClick={handleMenu} color="inherit">
+                <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}>
+                  {user?.username?.charAt(0).toUpperCase()}
+                </Avatar>
+              </IconButton>
+              
+              <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+                <MenuItem disabled>
+                  <Typography variant="body2">
+                    Signed in as <strong>{user?.username}</strong>
+                  </Typography>
+                </MenuItem>
+                <MenuItem onClick={handleHistoryOpen}>
+                  <HistoryIcon sx={{ mr: 1, fontSize: 20 }} />
+                  History
+                </MenuItem>
+                <MenuItem onClick={handleLogout}>
+                  <LogoutIcon sx={{ mr: 1, fontSize: 20 }} />
+                  Logout
+                </MenuItem>
+              </Menu>
+            </Box>
+          ) : (
+            <Button color="inherit" onClick={() => setLoginOpen(true)}>
+              Login
+            </Button>
+          )}
         </Toolbar>
       </AppBar>
 
@@ -192,10 +306,7 @@ function App() {
 
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {tabValue === 0 ? (
-            <FileUpload 
-              onFileSelect={handleFileSelect}
-              onClearResults={handleClearResults}
-            />
+            <FileUpload onFileSelect={handleFileSelect} onClearResults={handleClearResults} />
           ) : tabValue === 1 ? (
             <DatabaseConnectionForm 
               onConnect={handleDatabaseConnect}
@@ -212,7 +323,6 @@ function App() {
             />
           )}
 
-          {/* Show Question Input only if we have a VALID data source */}
           {hasValidDataSource && (
             <QuestionInput 
               onSubmit={handleQuestionSubmit} 
@@ -229,24 +339,70 @@ function App() {
 
           {preview && <DataPreview data={preview} />}
 
-          {/* Show results only when we have actual results (not just config) */}
           {results && !results.dbConfig && !results.sheetsConfig && (
-            <ResultsDisplay results={results} userQuestion={userQuestion} />
+            <Box>
+              {isAuthenticated && (
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<EmailIcon />}
+                    onClick={handleEmailResults}
+                    disabled={emailSending}
+                    size="small"
+                  >
+                    {emailSending ? 'Sending...' : 'Email Results'}
+                  </Button>
+                </Box>
+              )}
+              <ResultsDisplay results={results} userQuestion={userQuestion} />
+            </Box>
           )}
         </Box>
       </Container>
 
-      <Snackbar
-        open={openSnackbar}
-        autoHideDuration={6000}
-        onClose={handleCloseSnackbar}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={handleCloseSnackbar} severity="error" sx={{ width: '100%' }}>
-          {error}
-        </Alert>
+      {/* Login Modal - for in-app login */}
+      <Login open={loginOpen} onClose={() => setLoginOpen(false)} />
+      
+      {/* History Drawer */}
+      <HistoryDrawer open={historyOpen} onClose={handleHistoryClose} onLoadAnalysis={handleLoadHistoryItem} />
+      
+      {/* Email Success Snackbar */}
+      <Snackbar open={emailSent} autoHideDuration={3000} onClose={() => setEmailSent(false)}>
+        <Alert severity="success">Results sent to your email!</Alert>
+      </Snackbar>
+      
+      {/* Error Snackbar */}
+      <Snackbar open={openSnackbar} autoHideDuration={6000} onClose={handleCloseSnackbar}>
+        <Alert onClose={handleCloseSnackbar} severity="error">{error}</Alert>
       </Snackbar>
     </>
+  );
+}
+
+// Main App with Router
+function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          {/* Public route - Login page (full page) */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* Public route - Email verification success page */}
+          <Route path="/verification-success" element={<VerificationSuccess />} />
+          
+          {/* Protected routes - everything else */}
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <DashboardContent />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 
