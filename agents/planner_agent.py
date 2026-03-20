@@ -31,6 +31,7 @@ Available tools:
 7. forecast_revenue        -> predict future revenue
 8. visualization           -> generate charts from results
 9. monthly_revenue_by_customer -> monthly revenue trends for customers
+10. monthly_revenue_by_product -> monthly revenue trends for products
 
 User Question:
 {question}
@@ -43,6 +44,8 @@ If the question contains:
 - "top products" → add "revenue_by_product"
 - "top customers" → add "revenue_by_customer"
 - "monthly trends" → add "monthly_growth" or "monthly_profit"
+- "product monthly trends" → add "monthly_revenue_by_product"
+- "customer monthly trends" → add "monthly_revenue_by_customer"
 - "forecast" → add "forecast_revenue"
 Always include "visualization" if charts are helpful.
 

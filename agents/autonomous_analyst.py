@@ -130,7 +130,8 @@ class AutonomousAnalyst:
                         "visualization",
                         "revenue_by_customer",
                         "revenue_by_product",
-                        "monthly_revenue_by_customer"
+                        "monthly_revenue_by_customer",
+                        "monthly_revenue_by_product"
                     ]
                 }
                 raw_plan = "Default general analysis plan applied."

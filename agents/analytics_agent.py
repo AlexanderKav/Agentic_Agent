@@ -252,6 +252,69 @@ class AnalyticsAgent:
             )
             raise
 
+    @timer(operation='monthly_revenue_by_product')
+    def monthly_revenue_by_product(self):
+        """Get monthly revenue per product"""
+        try:
+            if "product" not in self.df.columns or "date" not in self.df.columns:
+                self.audit_logger.log_action(
+                    action_type='monthly_revenue_by_product_missing',
+                    agent='analytics',
+                    details={'error': 'product or date column missing'},
+                    session_id=self.session_id
+                )
+                return {}
+            
+            # Drop rows with missing dates or revenue
+            df = self.df.dropna(subset=["date", "revenue"]).copy()
+            if df.empty:
+                return {}
+            
+            # Create month period
+            df["month"] = df["date"].dt.to_period("M")
+            
+            # Group by product and month
+            grouped = df.groupby(["product", "month"])["revenue"].sum().reset_index()
+            
+            # Convert to dictionary format: {product: {month: revenue}}
+            result = {}
+            for product, group in grouped.groupby("product"):
+                monthly = {str(row["month"]): float(np.floor(row["revenue"])) for _, row in group.iterrows()}
+                # Get last 6 months for trend
+                trend = list(monthly.values())[-6:] if monthly else []
+                result[product] = {
+                    "monthly_revenue": monthly,
+                    "trend": trend,
+                    "total_revenue": sum(monthly.values()),
+                    "declining": self._is_declining_trend(trend) if len(trend) > 1 else False
+                }
+            
+            self.audit_logger.log_action(
+                action_type='monthly_revenue_by_product',
+                agent='analytics',
+                details={'unique_products': len(result)},
+                session_id=self.session_id
+            )
+            
+            return result
+            
+        except Exception as e:
+            self.healer.analyze_failure(e, {'tool': 'monthly_revenue_by_product'})
+            self.audit_logger.log_action(
+                action_type='monthly_revenue_by_product_error',
+                agent='analytics',
+                details={'error': str(e)},
+                session_id=self.session_id
+            )
+            raise
+
+    def _is_declining_trend(self, trend_values):
+        """Check if trend is declining"""
+        if len(trend_values) < 2:
+            return False
+        # Simple check: each subsequent value is less than or equal to previous
+        return all(earlier >= later for earlier, later in zip(trend_values, trend_values[1:]))
+
     @timer(operation='revenue_by_product')
     def revenue_by_product(self):
         """Get revenue by product with monitoring"""
@@ -781,7 +844,8 @@ class AnalyticsAgent:
             "detect_revenue_spikes": self.detect_revenue_spikes,
             "forecast_revenue": self.forecast_revenue,
             "generate_summary": self.generate_summary,
-            "monthly_revenue_by_customer": self.monthly_revenue_by_customer
+            "monthly_revenue_by_customer": self.monthly_revenue_by_customer,
+            "monthly_revenue_by_product": self.monthly_revenue_by_product 
         }
 
         if tool_name not in tools:

@@ -151,31 +151,3 @@ print(raw_insights)
 print("\nAI Business Analysis (JSON):")
 print(json.dumps(insights, indent=2))
 
-
-
-#from automation.report_scheduler import ReportScheduler
-
-#scheduler = ReportScheduler(autonomous_analyst)
-
-#scheduler.start()
-
-
-#from agents.visualization_agent import VisualizationAgent
-
-#viz_agent = VisualizationAgent(analytics)
-
-# Example user question
-#question = "Show profit trends in 2024"
-
-#charts = viz_agent.run(question)
-#print("Generated Charts:", charts)
-
-###############################
-#while True:
-
-  #  question = input("\nAsk a business question: ")
-
-  #  raw_plan, plan, results, raw_insights, insights = autonomous_analyst.run(question)
-
-  #  print("\nAI Insights:")
-   # print(json.dumps(insights, indent=2))
