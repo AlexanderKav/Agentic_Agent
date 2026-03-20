@@ -69,13 +69,6 @@ psycopg2-binary>=2.9.0
 
 slowapi>=0.1.9
 
-# Email (Gmail example)
-SMTP_HOST==smtp.gmail.com
-SMTP_PORT==587
-SMTP_USER==your-email@gmail.com
-SMTP_PASSWORD==Agentic-Analyst
-FROM_EMAIL==alexkavanagh6@gmail.com
-
 # Authentication
 pyjwt==2.8.0
 passlib[bcrypt]==1.7.4
