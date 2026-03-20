@@ -168,7 +168,7 @@ class TestEndToEndQuestionFlow:
             
             # Assertions
             assert raw_plan == "Default general analysis plan applied."
-            assert len(plan["plan"]) == 9  # All default tools
+            assert len(plan["plan"]) == 10  # All default tools
             assert "compute_kpis" in plan["plan"]
             assert "monthly_profit" in plan["plan"]
             assert "monthly_growth" in plan["plan"]
@@ -178,6 +178,7 @@ class TestEndToEndQuestionFlow:
             assert "revenue_by_customer" in plan["plan"]
             assert "revenue_by_product" in plan["plan"]
             assert "monthly_revenue_by_customer" in plan["plan"]
+            assert "monthly_revenue_by_product" in plan["plan"] 
             
             # Check results contain at least some tools
             assert len(results) > 0
@@ -214,7 +215,8 @@ class TestEndToEndEdgeCases:
             
             # Should default to general analysis
             assert raw_plan == "Default general analysis plan applied."
-            assert len(plan["plan"]) == 9
+            # Update from 9 to 10 because we added monthly_revenue_by_product
+            assert len(plan["plan"]) == 10  # All default tools (was 9)
             assert "charts" in results
             
             # Verify planner was NOT called
