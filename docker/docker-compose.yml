@@ -1,0 +1,65 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: agentic-analyst-app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/agentic_analyst
+      - SECRET_KEY=${SECRET_KEY:-EWs2rm_QDEe9qSoPBTYw9Y5pA33RjR4WUVnV97M77J8}
+      - AUDIT_SECRET_KEY=${AUDIT_SECRET_KEY:-7qa28VjgC_knPZARM1XOaOTePnFHNhdoGEm1ijjFSgk}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-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}
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../logs:/app/logs
+      - ../agents/charts:/app/agents/charts
+      - ../data:/app/data
+    networks:
+      - agentic-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: agentic-analyst-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=agentic_analyst
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - agentic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: agentic-analyst-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - agentic-network
+    restart: unless-stopped
+
+networks:
+  agentic-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

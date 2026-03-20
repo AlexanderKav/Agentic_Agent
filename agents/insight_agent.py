@@ -28,8 +28,6 @@ def make_json_safe(obj):
 
 def extract_json_from_text(text):
     """Extract first JSON block from text safely, handling both // and # comments."""
-    import re
-    import json
     
     print(f"\n🔧 Cleaning JSON response (original length: {len(text)} chars)")
     

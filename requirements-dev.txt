@@ -1,0 +1,26 @@
+# Development dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+pytest-xdist==3.5.0
+pytest-html==4.1.1
+pytest-benchmark==4.0.0
+pytest-timeout==2.4.0
+
+# Code quality
+ruff==0.3.0
+mypy==1.8.0
+black==24.2.0
+pre-commit==3.6.0
+
+# Type stubs
+types-python-dateutil==2.8.19
+types-requests==2.31.0
+types-PyYAML==6.0.12
+
+# Docker testing
+pytest-docker==2.0.1
+
+# Profiling
+memory-profiler==0.61.0
+line-profiler==4.1.0
