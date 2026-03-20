@@ -6,6 +6,7 @@ services:
     container_name: agentic-analyst-app
     ports:
       - "8000:8000"
+    # Remove env_file - we'll use environment section with variable substitution
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/agentic_analyst
       - SECRET_KEY=${SECRET_KEY}

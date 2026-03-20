@@ -1,5 +1,7 @@
 .PHONY: help build up down logs shell test clean
 
+ENV_FILE := .env
+
 help:
 	@echo "Available commands:"
 	@echo "  make build    - Build Docker images"
@@ -11,30 +13,30 @@ help:
 	@echo "  make clean    - Remove containers and volumes"
 
 build:
-	docker-compose -f docker/docker-compose.yml build
+	cd docker && docker-compose build
 
 up:
-	docker-compose -f docker/docker-compose.yml up -d
+	cd docker && docker-compose --env-file ../.env up -d
 	@echo "✅ Application running at http://localhost:8000"
 	@echo "📊 API docs at http://localhost:8000/api/docs"
 
 down:
-	docker-compose -f docker/docker-compose.yml down
+	cd docker && docker-compose down
 
 logs:
-	docker-compose -f docker/docker-compose.yml logs -f
+	cd docker && docker-compose logs -f
 
 shell:
-	docker-compose -f docker/docker-compose.yml exec app /bin/bash
+	cd docker && docker-compose exec app /bin/bash
 
 test:
-	docker-compose -f docker/docker-compose.yml exec app pytest tests/ -v
+	cd docker && docker-compose exec app pytest tests/ -v
 
 clean:
-	docker-compose -f docker/docker-compose.yml down -v
+	cd docker && docker-compose down -v
 	docker system prune -f
 
 restart: down up
 
 status:
-	docker-compose -f docker/docker-compose.yml ps
+	cd docker && docker-compose ps
