@@ -12,3 +12,9 @@ large_test_file.csv
 
 #
 miscellaneous
+
+#
+.env.prod
+
+#
+scripts

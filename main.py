@@ -136,8 +136,8 @@ viz_agent = VisualizationAgent()
 #Password: analyst_pass123
 #Table: sales
 
-#Host: agentic-analyst-postgres-test
-#Port: 5432
+#Host: agentic-analyst-postgres-test or host.docker.internal
+#Port: 5433
 #Database: sales_db
 #Username: analyst_user
 #Password: analyst_pass123
@@ -147,6 +147,19 @@ viz_agent = VisualizationAgent()
 #docker logs agentic-analyst-db --tail 50
 
 #docker logs agentic-analyst-app
+
+
+# DEVELOPMENT (with hot-reload, debug)
+#cd docker
+#docker-compose -f docker-compose.dev.yml up -d
+
+# PRODUCTION (optimized, secure)
+#cd docker
+#docker-compose -f docker-compose.prod.yml up -d
+
+# TEST DATABASES (separate)
+#cd ..
+#docker-compose -f docker-compose-test-dbs.yml up -d
 
 # -------------------------
 # Run the workflow

@@ -1,34 +1,39 @@
+# docker/docker-compose.prod.yml
 services:
   app:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.prod
     container_name: agentic-analyst-app
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/agentic_analyst
-      - SECRET_KEY=${SECRET_KEY}
-      - AUDIT_SECRET_KEY=${AUDIT_SECRET_KEY}
+      - SECRET_KEY=dev-secret-key-for-testing
+      - AUDIT_SECRET_KEY=dev-audit-key-for-testing
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      # Set to the path INSIDE the container where credentials will be mounted
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google-credentials.json
+      - ENVIRONMENT=production
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_started  # Changed from service_healthy
+      redis:
+        condition: service_started
     volumes:
-      - ../logs:/app/logs
-      - ../agents/charts:/app/agents/charts
-      - ../data:/app/data
-      # Mount your credentials file from Windows to container
-      - C:/Users/alexk/Desktop/agentic-analyst/agentic-analyst-489012-a0aa86d33643.json:/app/credentials/google-credentials.json
+      - app_logs:/app/logs
+      - app_charts:/app/agents/charts
+      - app_data:/app/data
+      - ../agentic-analyst-489012-a0aa86d33643.json:/app/credentials/google-credentials.json:ro
     networks:
       - agentic-network
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   db:
     image: postgres:15-alpine
@@ -43,16 +48,13 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - agentic-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
+    # Health check removed - not necessary for development
 
   redis:
     image: redis:7-alpine
     container_name: agentic-analyst-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
     volumes:
@@ -68,3 +70,6 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  app_logs:
+  app_charts:
+  app_data:
