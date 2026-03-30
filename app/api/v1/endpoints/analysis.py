@@ -23,7 +23,7 @@ from app.api.v1.models.responses import AnalysisResponse, FileUploadResponse, He
 from app.core.analysis import AnalysisOrchestrator
 from app.core.data_source import DataSourceHandler
 from app.core.database import get_db
-from app.api.v1.models.analysis import AnalysisHistory
+from app.api.v1.models.analysis import AnalysisHistory, AnalysisMetric, AnalysisInsight
 from app.api.v1.models.user import User
 from app.api.v1.endpoints.auth import get_current_user
 from connectors.database_connector import DatabaseConnector
@@ -1497,7 +1497,6 @@ async def get_aggregate_metrics(
 ):
     """Get aggregated metrics across all analyses (for dashboards)"""
     from datetime import datetime, timedelta
-    
     cutoff_date = datetime.utcnow() - timedelta(days=days)
     
     metrics = db.query(AnalysisMetric).join(

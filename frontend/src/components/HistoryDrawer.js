@@ -1,3 +1,4 @@
+// frontend/src/components/HistoryDrawer.js
 import React, { useState, useEffect } from 'react';
 import {
   Drawer,
@@ -5,123 +6,117 @@ import {
   Typography,
   List,
   ListItem,
-  ListItemButton,
   ListItemText,
-  ListItemIcon,
+  ListItemSecondaryAction,
   IconButton,
   Divider,
-  Chip,
   CircularProgress,
   Alert,
-  TextField,
-  InputAdornment
+  Pagination,
+  Chip
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
-import HistoryIcon from '@mui/icons-material/History';
-import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
-import StorageIcon from '@mui/icons-material/Storage';
-import GoogleIcon from '@mui/icons-material/Google';
-import SearchIcon from '@mui/icons-material/Search';
-import { getAnalysisHistory } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import DeleteIcon from '@mui/icons-material/Delete';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import { getAnalysisHistory, deleteAnalysis } from '../services/api';
 
 const HistoryDrawer = ({ open, onClose, onLoadAnalysis }) => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const { user } = useAuth();
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const itemsPerPage = 10;
 
-  useEffect(() => {
-    if (open && user) {
-      loadHistory();
-    }
-  }, [open, user]);
-
-  const loadHistory = async () => {
+  const loadHistory = async (pageNum = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getAnalysisHistory();
-      setHistory(data);
+      const offset = (pageNum - 1) * itemsPerPage;
+      const response = await getAnalysisHistory(itemsPerPage, offset);
+      
+      console.log("History response:", response);
+      
+      // Handle both old and new response formats
+      if (Array.isArray(response)) {
+        // Old format: direct array
+        setHistory(response);
+        setTotalItems(response.length);
+        setTotalPages(Math.ceil(response.length / itemsPerPage));
+      } else if (response && response.items && Array.isArray(response.items)) {
+        // New format: paginated object
+        setHistory(response.items);
+        setTotalItems(response.total || response.items.length);
+        setTotalPages(Math.ceil((response.total || response.items.length) / itemsPerPage));
+      } else {
+        // Fallback
+        setHistory([]);
+        setTotalItems(0);
+        setTotalPages(1);
+      }
     } catch (err) {
-      setError('Failed to load history');
-      console.error(err);
+      console.error("Failed to load history:", err);
+      setError(err.message || 'Failed to load history');
     } finally {
       setLoading(false);
     }
   };
 
-  const getIcon = (type) => {
-    switch (type) {
-      case 'file':
-        return <InsertDriveFileIcon color="primary" />;
-      case 'database':
-        return <StorageIcon color="success" />;
-      case 'google_sheets':
-        return <GoogleIcon color="error" />;
-      default:
-        return <HistoryIcon />;
+  useEffect(() => {
+    if (open) {
+      loadHistory(page);
+    }
+  }, [open, page]);
+
+  const handleDelete = async (id, event) => {
+    event.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this analysis?')) {
+      try {
+        await deleteAnalysis(id);
+        // Refresh current page
+        loadHistory(page);
+      } catch (err) {
+        setError('Failed to delete analysis');
+      }
     }
   };
 
-  const getTypeLabel = (type) => {
-    switch (type) {
-      case 'file': return 'File Upload';
-      case 'database': return 'Database';
-      case 'google_sheets': return 'Google Sheets';
-      default: return type;
-    }
+  const handlePageChange = (event, newPage) => {
+    setPage(newPage);
   };
-
-  const filteredHistory = history.filter(item => 
-    item.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    getTypeLabel(item.type).toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  };
+
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case 'file': return '📁';
+      case 'database': return '🗄️';
+      case 'google_sheets': return '📊';
+      default: return '📄';
+    }
   };
 
   return (
-    <Drawer
-      anchor="right"
-      open={open}
-      onClose={onClose}
-      PaperProps={{ sx: { width: { xs: '100%', sm: 400 } } }}
-    >
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h6">Analysis History</Typography>
-        <IconButton onClick={onClose}>
-          <CloseIcon />
-        </IconButton>
-      </Box>
-      
-      <Divider />
-      
-      <Box sx={{ p: 2 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search history..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            )
-          }}
-        />
-      </Box>
-      
-      <Divider />
-      
-      <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
+    <Drawer anchor="right" open={open} onClose={onClose}>
+      <Box sx={{ width: 400, p: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          Analysis History
+          {totalItems > 0 && (
+            <Chip 
+              label={`${totalItems} items`} 
+              size="small" 
+              sx={{ ml: 1 }}
+            />
+          )}
+        </Typography>
+        
+        <Divider sx={{ mb: 2 }} />
+        
         {loading && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
           </Box>
         )}
@@ -132,62 +127,82 @@ const HistoryDrawer = ({ open, onClose, onLoadAnalysis }) => {
           </Alert>
         )}
         
-        {!loading && !error && filteredHistory.length === 0 && (
-          <Typography color="textSecondary" align="center" sx={{ my: 4 }}>
-            {history.length === 0 ? 'No analysis history yet' : 'No matches found'}
+        {!loading && history.length === 0 && !error && (
+          <Typography color="textSecondary" sx={{ textAlign: 'center', p: 3 }}>
+            No analysis history yet. Upload a file or connect to a database to get started.
           </Typography>
         )}
         
         <List>
-          {filteredHistory.map((item) => (
-            <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
-              <ListItemButton
-                onClick={() => onLoadAnalysis(item.id)}
-                sx={{
-                  borderRadius: 1,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  p: 2
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 1 }}>
-                  <ListItemIcon sx={{ minWidth: 40 }}>
-                    {getIcon(item.type)}
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={item.question || 'General Overview'}
-                    secondary={formatDate(item.created_at)}
-                    primaryTypographyProps={{
-                      sx: { fontWeight: 'medium', fontSize: '0.95rem' }
-                    }}
-                    secondaryTypographyProps={{
-                      sx: { fontSize: '0.8rem' }
-                    }}
-                  />
-                </Box>
-                
-                <Box sx={{ display: 'flex', gap: 1, ml: 5 }}>
-                  <Chip 
-                    label={getTypeLabel(item.type)} 
-                    size="small" 
-                    variant="outlined"
-                    sx={{ fontSize: '0.7rem' }}
-                  />
-                  {item.data_source?.rows && (
-                    <Chip 
-                      label={`${item.data_source.rows} rows`} 
-                      size="small" 
-                      variant="outlined"
-                      sx={{ fontSize: '0.7rem' }}
-                    />
-                  )}
-                </Box>
-              </ListItemButton>
+          {history.map((item) => (
+            <ListItem
+              key={item.id}
+              button
+              onClick={() => onLoadAnalysis(item.id)}
+              sx={{
+                border: '1px solid #e0e0e0',
+                borderRadius: 1,
+                mb: 1,
+                '&:hover': { bgcolor: '#f5f5f5' }
+              }}
+            >
+              <ListItemText
+                primary={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <span>{getTypeIcon(item.type)}</span>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                      {item.question.length > 50 
+                        ? item.question.substring(0, 50) + '...' 
+                        : item.question}
+                    </Typography>
+                  </Box>
+                }
+                secondary={
+                  <Box sx={{ mt: 0.5 }}>
+                    <Typography variant="caption" color="textSecondary">
+                      {formatDate(item.created_at)}
+                    </Typography>
+                    {item.summary_metrics && item.summary_metrics.total_revenue && (
+                      <Chip 
+                        label={`$${item.summary_metrics.total_revenue.toLocaleString()}`}
+                        size="small"
+                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                      />
+                    )}
+                    {item.insight_count > 0 && (
+                      <Chip 
+                        label={`${item.insight_count} insights`}
+                        size="small"
+                        sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
+                      />
+                    )}
+                  </Box>
+                }
+              />
+              <ListItemSecondaryAction>
+                <IconButton 
+                  edge="end" 
+                  onClick={(e) => handleDelete(item.id, e)}
+                  size="small"
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </ListItemSecondaryAction>
             </ListItem>
           ))}
         </List>
+        
+        {totalPages > 1 && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+            <Pagination 
+              count={totalPages} 
+              page={page} 
+              onChange={handlePageChange}
+              color="primary"
+              size="small"
+            />
+          </Box>
+        )}
       </Box>
     </Drawer>
   );

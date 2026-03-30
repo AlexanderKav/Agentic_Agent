@@ -103,20 +103,51 @@ function DashboardContent() {
 
   const handleHistoryClose = () => setHistoryOpen(false);
 
-  const handleLoadHistoryItem = async (id) => {
-    try {
-      setLoading(true);
-      const analysis = await getAnalysisById(id);
+const handleLoadHistoryItem = async (id) => {
+  try {
+    setLoading(true);
+    // Use includeRaw=true to get full results
+    const analysis = await getAnalysisById(id, true);
+    
+    // Handle both old and new response formats
+    if (analysis.results) {
+      // Old format: results directly in response
       setResults(analysis.results);
-      setUserQuestion(analysis.question);
-      setHistoryOpen(false);
-    } catch (err) {
-      setError('Failed to load analysis');
-      setOpenSnackbar(true);
-    } finally {
-      setLoading(false);
+    } else if (analysis.raw_results) {
+      // New format: raw_results contains the analysis data
+      setResults(analysis.raw_results);
+    } else {
+      // Build results from structured data
+      const structuredResults = {};
+      
+      // Add metrics if available
+      if (analysis.structured_metrics) {
+        structuredResults.metrics = analysis.structured_metrics;
+      }
+      
+      // Add insights if available
+      if (analysis.insights) {
+        structuredResults.insights = analysis.insights;
+      }
+      
+      // Add charts if available
+      if (analysis.charts) {
+        structuredResults.charts = analysis.charts;
+      }
+      
+      setResults(structuredResults);
     }
-  };
+    
+    setUserQuestion(analysis.question);
+    setHistoryOpen(false);
+  } catch (err) {
+    console.error('Failed to load analysis:', err);
+    setError('Failed to load analysis');
+    setOpenSnackbar(true);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleEmailResults = async () => {
     if (!user?.email) {

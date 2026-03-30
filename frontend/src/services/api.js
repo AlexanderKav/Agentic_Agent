@@ -48,16 +48,43 @@ export const resendVerificationEmail = async (email) => {
 
 // ==================== HISTORY ENDPOINTS ====================
 
+
+// Get analysis history (handles pagination)
 export const getAnalysisHistory = async (limit = 20, offset = 0) => {
   const response = await api.get(`/analysis/history?limit=${limit}&offset=${offset}`);
   return response.data;
 };
 
-export const getAnalysisById = async (id) => {
-  const response = await api.get(`/analysis/history/${id}`);
+// Get single analysis by ID
+export const getAnalysisById = async (id, includeRaw = false) => {
+  const response = await api.get(`/analysis/history/${id}?include_raw=${includeRaw}`);
   return response.data;
 };
 
+// Delete analysis
+export const deleteAnalysis = async (id) => {
+  const response = await api.delete(`/analysis/history/${id}`);
+  return response.data;
+};
+
+// Get analysis metrics (lightweight)
+export const getAnalysisMetrics = async (id, metricType = null, category = null) => {
+  let url = `/analysis/history/${id}/metrics`;
+  const params = [];
+  if (metricType) params.push(`metric_type=${metricType}`);
+  if (category) params.push(`category=${category}`);
+  if (params.length) url += `?${params.join('&')}`;
+  const response = await api.get(url);
+  return response.data;
+};
+
+// Get analysis insights (lightweight)
+export const getAnalysisInsights = async (id, insightType = null) => {
+  let url = `/analysis/history/${id}/insights`;
+  if (insightType) url += `?insight_type=${insightType}`;
+  const response = await api.get(url);
+  return response.data;
+};
 // ==================== EMAIL ENDPOINTS ====================
 
 export const sendAnalysisEmail = async (toEmail, analysisId = null) => {
