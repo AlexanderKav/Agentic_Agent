@@ -11,7 +11,7 @@ from app.services.email import EmailService
 from app.core.database import get_db
 from app.api.v1.models.user import User
 
-from app.config import settings  # Import settings
+from app.config import settings
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
@@ -86,7 +86,6 @@ def get_current_user(
     if user is None:
         raise credentials_exception
     
-    # Check if email is verified (optional based on endpoint)
     if require_verified and not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -115,23 +114,23 @@ async def register(
     
     # Check if user exists AND is verified
     existing_user = db.query(User).filter(
-        (User.email == user_data.email) | (User.username == user_data.username)
+        (User.username == user_data.username)  # Username is still plaintext for searching
     ).first()
     
+    # Also check if email exists (but we need to decrypt to check)
+    # This is more complex with encrypted data - we'll check username first
     if existing_user:
         if existing_user.is_verified:
-            raise HTTPException(status_code=400, detail="Email or username already registered")
+            raise HTTPException(status_code=400, detail="Username already registered")
         else:
             # User exists but not verified - resend verification email
-            # Generate new token
             token = existing_user.generate_verification_token()
             db.commit()
             
-            # Send verification email
             email_service = EmailService()
             background_tasks.add_task(
                 email_service.send_verification_email,
-                existing_user.email,
+                existing_user.email,  # This auto-decrypts
                 existing_user.username,
                 token
             )
@@ -141,13 +140,13 @@ async def register(
                 "email": existing_user.email
             }
     
-    # Create new user (unverified)
+    # Create new user - use the property setter to encrypt
     user = User(
-        email=user_data.email,
         username=user_data.username,
-        full_name=user_data.full_name,
         is_verified=False
     )
+    user.email = user_data.email  # This will encrypt automatically
+    user.full_name = user_data.full_name  # This will encrypt automatically
     user.set_password(user_data.password)
     
     # Generate verification token
@@ -161,7 +160,7 @@ async def register(
     email_service = EmailService()
     background_tasks.add_task(
         email_service.send_verification_email,
-        user.email,
+        user.email,  # Auto-decrypts
         user.username,
         token
     )
@@ -185,21 +184,17 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Verification token has expired")
     
     if user.is_verified:
-        # Already verified - still return success but don't change anything
         pass
     else:
-        # Mark as verified
         user.verify()
         db.commit()
         print(f"✅ Email verified for user: {user.username}")
     
-    # Create access token for auto-login
     access_token = create_access_token(data={"sub": str(user.id)})
     
-    # Return user data and token
     return {
         "message": "Email verified successfully",
-        "email": user.email,
+        "email": user.email,  # Auto-decrypts
         "access_token": access_token,
         "token_type": "bearer",
         "user": {
@@ -226,7 +221,6 @@ async def login(
     if not user.verify_password(form_data.password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
-    # Check if email is verified
     if not user.is_verified:
         raise HTTPException(
             status_code=401, 
@@ -255,7 +249,15 @@ async def resend_verification(
     db: Session = Depends(get_db)
 ):
     """Resend verification email"""
-    user = db.query(User).filter(User.email == request.email).first()
+    # Since email is encrypted, we need to query all users and decrypt
+    # This is inefficient but necessary for now. Consider adding an email hash index.
+    users = db.query(User).filter(User.is_verified == False).all()
+    user = None
+    
+    for u in users:
+        if u.email == request.email:  # This will decrypt
+            user = u
+            break
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -263,11 +265,9 @@ async def resend_verification(
     if user.is_verified:
         raise HTTPException(status_code=400, detail="Email already verified")
     
-    # Generate new token
     token = user.generate_verification_token()
     db.commit()
     
-    # Send email
     email_service = EmailService()
     background_tasks.add_task(
         email_service.send_verification_email,
@@ -293,7 +293,15 @@ async def get_profile_unverified(current_user: User = Depends(get_current_user_u
 @router.delete("/unverified/{email}")
 async def delete_unverified_user(email: str, db: Session = Depends(get_db)):
     """Delete an unverified user (admin only or for testing)"""
-    user = db.query(User).filter(User.email == email, User.is_verified == False).first()
+    # Decrypt and check
+    users = db.query(User).filter(User.is_verified == False).all()
+    user = None
+    
+    for u in users:
+        if u.email == email:
+            user = u
+            break
+    
     if not user:
         raise HTTPException(status_code=404, detail="Unverified user not found")
     

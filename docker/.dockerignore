@@ -58,3 +58,34 @@ docker/
 # Misc
 *.md
 !.github/workflows/*.yml
+
+
+
+# .dockerignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+.env.prod
+.env.local
+.env.*.local
+secrets.enc
+secrets.key
+data/
+*.db
+*.sqlite
+*.sqlite3
+.git/
+.gitignore
+README.md
+.vscode/
+.idea/
+*.log
+logs/

@@ -88,3 +88,6 @@ python-magic==0.4.27
 pymysql==1.1.0
 
 mysql-connector-python==9.6.0
+
+cryptography  # Added for secrets management
+boto3  # Optional - for AWS Secrets Manager (add if using)

@@ -1,6 +1,4 @@
 # docker/Dockerfile.prod
-# Multi-stage build for production - SMALLER, SECURE, OPTIMIZED
-
 # Stage 1: Builder
 FROM python:3.11-slim AS builder
 
@@ -10,6 +8,8 @@ WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    libpq-dev \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install to virtual environment
@@ -21,9 +21,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Stage 2: Runtime
 FROM python:3.11-slim
 
-# Install runtime dependencies only
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    libpq-dev \
+    libmagic1 \   # <-- ADD THIS
+    file \        # <-- ADD THIS
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -35,14 +38,16 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/agents/charts /app/data && \
+    chown -R appuser:appuser /app && \
+    chmod 755 /app/data
+
 # Copy application code
 COPY --chown=appuser:appuser ./app ./app
 COPY --chown=appuser:appuser ./agents ./agents
 COPY --chown=appuser:appuser ./connectors ./connectors
-
-# Create directories with proper permissions
-RUN mkdir -p /app/logs /app/agents/charts /app/data && \
-    chown -R appuser:appuser /app
+COPY --chown=appuser:appuser ./services ./services
 
 USER appuser
 

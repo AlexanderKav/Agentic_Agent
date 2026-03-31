@@ -14,15 +14,33 @@ services:
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/google-credentials.json
+      - ENVIRONMENT=development
+      # Secrets Manager - Development settings
+      - SECRETS_BACKEND=local
+      - SECRETS_FILE=/app/data/secrets.enc
+      - SECRETS_KEY_FILE=/app/data/secrets.key
+      - SECRETS_MASTER_PASSWORD=${SECRETS_MASTER_PASSWORD:-dev-master-password-change-me}
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY:-dev-encryption-key-32-bytes-long!!}
+      - KEY_ROTATION_DAYS=${KEY_ROTATION_DAYS:-90}
+      - KEY_GRACE_PERIOD_DAYS=${KEY_GRACE_PERIOD_DAYS:-1}
+      # Email settings (optional for dev)
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - FROM_EMAIL=${FROM_EMAIL}
+      - FROM_NAME=${FROM_NAME:-Agentic Analyst}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ../logs:/app/logs
       - ../agents/charts:/app/agents/charts
       - ../data:/app/data
-      # Mount your credentials file from Windows to container
-      - C:/Users/alexk/Desktop/agentic-analyst/agentic-analyst-489012-a0aa86d33643.json:/app/credentials/google-credentials.json
+      # Mount your credentials file
+      - C:/Users/alexk/Desktop/agentic-analyst/agentic-analyst-489012-a0aa86d33643.json:/app/credentials/google-credentials.json:ro
     networks:
       - agentic-network
     restart: unless-stopped

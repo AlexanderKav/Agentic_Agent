@@ -1,17 +1,22 @@
 # docker/Dockerfile.dev
-# For development: includes hot-reload and debugging tools
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install development dependencies
+# Install development dependencies including cryptography for secrets
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    gcc \
+    g++ \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Create data directory for secrets
+RUN mkdir -p /app/data && chmod 755 /app/data
 
 # Copy application code (mounted as volume for hot-reload)
 COPY . .

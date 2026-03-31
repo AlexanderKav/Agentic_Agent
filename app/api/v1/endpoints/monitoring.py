@@ -3,7 +3,12 @@ from fastapi import APIRouter
 from datetime import datetime, timedelta
 
 from app.api.v1.models.responses import HealthResponse
+from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
 from agents.monitoring import get_cost_tracker, get_performance_tracker, get_audit_logger
+from app.services.key_rotation import get_key_rotation_service
+from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.models import User
 
 # ✅ Make sure this line is present
 router = APIRouter(prefix="/api/v1/monitoring", tags=["monitoring"])
@@ -40,3 +45,14 @@ async def get_audit_logs(
         start_date=start_date.strftime("%Y-%m-%d"),
         end_date=end_date.strftime("%Y-%m-%d")
     )
+
+
+
+@router.get("/key-rotation-status")
+async def get_key_rotation_status(
+    current_user: User = Depends(get_current_user)
+):
+    """Get key rotation status (admin only)"""
+    # In production, add admin check
+    rotation_service = get_key_rotation_service()
+    return rotation_service.get_all_rotation_status()

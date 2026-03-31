@@ -11,6 +11,7 @@ import os
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from app.services.key_rotation import get_key_rotation_service
 
 # Import the routers correctly
 from app.api.v1.endpoints import analysis, monitoring
@@ -50,6 +51,35 @@ app.add_middleware(
 # Include routers
 app.include_router(analysis.router)
 app.include_router(monitoring.router)
+
+@app.on_event("startup")
+async def startup_event():
+    """Run startup tasks"""
+    # Create database tables
+    from app.core.database import engine, Base
+    from app.api.v1.models import User, AnalysisHistory, AnalysisMetric, AnalysisInsight, AnalysisChart
+    
+    print("🔧 Creating database tables if they don't exist...")
+    Base.metadata.create_all(bind=engine)
+    print("✅ Database tables verified/created")
+    
+    # Check key rotation on startup
+    rotation_service = get_key_rotation_service()
+    rotation_service.check_and_rotate_if_needed('SECRET_KEY')
+    rotation_service.check_and_rotate_if_needed('AUDIT_SECRET_KEY')
+    
+    # Enable database encryption extension (for PostgreSQL)
+    from app.core.encryption import get_db_encryption
+    from app.core.database import SessionLocal
+    encryption = get_db_encryption()
+    db = SessionLocal()
+    try:
+        encryption.enable_pgcrypto_extension(db)
+        print("✅ pgcrypto extension enabled (PostgreSQL)")
+    except Exception as e:
+        print(f"⚠️ Could not enable pgcrypto: {e}")
+    finally:
+        db.close()
 
 
 @app.get("/", response_class=JSONResponse)

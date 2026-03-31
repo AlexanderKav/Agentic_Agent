@@ -9,6 +9,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # OpenAI
 OPENAI_API_KEY=your-openai-api-key-here
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/google-credentials.json
+EXCHANGE_RATE=your-exchange_rate-api-key-here
 
 # Email (optional)
 SMTP_HOST=smtp.gmail.com
@@ -16,3 +18,17 @@ SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 FROM_EMAIL=your-email@gmail.com
+
+# ==================== SECURITY ====================
+# Master password for encrypting secrets (generate once, store securely)
+SECRETS_MASTER_PASSWORD=your-secure-master-password-here
+
+# Database encryption key (32 hex chars)
+DB_ENCRYPTION_KEY=32-character-hex-key-here
+
+# Secrets backend (local, aws, vault)
+SECRETS_BACKEND=local
+
+# Key rotation settings
+KEY_ROTATION_DAYS=90
+KEY_GRACE_PERIOD_DAYS=1

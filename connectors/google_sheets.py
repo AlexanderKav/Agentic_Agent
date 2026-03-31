@@ -7,9 +7,34 @@ import pandas as pd
 from dotenv import load_dotenv
 import math
 import numpy as np
+import json
 
 load_dotenv()
+# Add at top
+from app.services.secrets_manager import get_secrets_manager
 
+def _get_credentials(self):
+    """Get credentials from secrets manager"""
+    secrets = get_secrets_manager()
+    
+    # Try to get from secrets manager first
+    creds_json = secrets.get('GOOGLE_CREDENTIALS')
+    
+    if creds_json:
+        creds_info = json.loads(creds_json)
+        return service_account.Credentials.from_service_account_info(
+            creds_info,
+            scopes=self.SCOPES
+        )
+    else:
+        # Fallback to file for backward compatibility
+        creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not creds_path:
+            raise ValueError("Google credentials not found in secrets manager or env")
+        return service_account.Credentials.from_service_account_file(
+            creds_path,
+            scopes=self.SCOPES
+        )
 class GoogleSheetsConnector:
     # Use read-only scope to limit what we can do
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
