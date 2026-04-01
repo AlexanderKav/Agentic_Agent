@@ -8,10 +8,10 @@ from langchain_core.prompts import ChatPromptTemplate
 from agents.monitoring import get_performance_tracker, timer, get_audit_logger, get_cost_tracker
 import numpy as np
 import pandas as pd
+import hashlib
 
 from agents.prompts import PromptRegistry
 from agents.model_router import ModelRouter
-from services.ab_testing import ABTestService
 
 
 
@@ -211,26 +211,22 @@ def ensure_insight_format(insight_data):
 class InsightAgent:
     def __init__(self, user_id=None, prompt_version=None):
         self.user_id = user_id
-        self.ab_test = ABTestService()
+        # self.ab_test = ABTestService()  # Remove this line
         self.model_router = ModelRouter()
         
         # Determine which prompt version to use
         if prompt_version:
             self.prompt_version = prompt_version
-        elif user_id:
-            # A/B test: 50% of users get v2
-            self.prompt_version = self.ab_test.get_version_for_user(
-                user_id, 'insight_prompt_v2', 
-                control='v1', treatment='v2', traffic_split=0.5
-            )
+            print(f"📌 Using explicit prompt version: {self.prompt_version}")
         else:
-            # Default from current.json
+            # Always use the version from current.json (which is v3)
             self.prompt_version = PromptRegistry.get_current_version('insight_agent')
+            print(f"📌 Using default version from config: {self.prompt_version}")
         
         # Load the prompt
         self.prompt_data = PromptRegistry.get_prompt('insight_agent', self.prompt_version)
         
-        # Initialize LLM with version-specific parameters
+        # Initialize LLM
         self._init_llm()
         
         print(f"🤖 InsightAgent initialized with prompt version: {self.prompt_version}")
@@ -288,23 +284,6 @@ class InsightAgent:
             
             # Sanitize the output
             sanitized_insights = ensure_insight_format(parsed_json)
-            
-            # Record metrics for A/B testing
-            if self.user_id:
-                self.ab_test.record_metric(
-                    self.user_id, 
-                    'insight_prompt_v2', 
-                    self.prompt_version,
-                    'answer_length', 
-                    len(sanitized_insights.get('answer', ''))
-                )
-                self.ab_test.record_metric(
-                    self.user_id,
-                    'insight_prompt_v2', 
-                    self.prompt_version,
-                    'latency',
-                    time.time() - start_time
-                )
             
             return raw, sanitized_insights
             

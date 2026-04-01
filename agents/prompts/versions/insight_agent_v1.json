@@ -1,8 +1,8 @@
 {
   "name": "insight_agent",
   "version": "v1",
-  "created_at": "2024-01-15",
-  "template": "You are a senior AI business analyst...",
+  "created_at": "2026-04-01",
+  "template": "You are a senior AI business analyst.\n\nA user asked the following question:\n\n{question}\n\nAnalyze the following structured business data:\n\n{data}\n\nYour tasks:\n1. Directly answer the user's question in plain language.\n2. Provide supporting insights with specific numerical values.\n3. Highlight anomalies or unusual patterns.\n4. Suggest actionable next steps in plain English, not raw numbers.\n\nReturn ONLY valid JSON in this format:\n\n{{\n  \"answer\": \"...direct answer to the user's question...\",\n  \"supporting_insights\": {{\n    \"key_findings\": [\"finding 1 with numbers\", \"finding 2 with numbers\"],\n    \"metrics\": {{\n      \"total_revenue\": 0,\n      \"profit_margin\": 0\n    }}\n  }},\n  \"anomalies\": {{\n    \"identified\": [\"anomaly 1\", \"anomaly 2\"]\n  }},\n  \"recommended_metrics\": {{\n    \"next_steps\": [\n      \"Actionable recommendation 1\",\n      \"Actionable recommendation 2\"\n    ]\n  }},\n  \"human_readable_summary\": \"A concise 2-3 sentence summary.\",\n  \"confidence_score\": 0.0\n}}",
   "parameters": {
     "temperature": 0.6,
     "model": "gpt-4o-mini"
@@ -12,6 +12,7 @@
     "supporting_insights": "object",
     "anomalies": "object",
     "recommended_metrics": "object",
-    "human_readable_summary": "string"
+    "human_readable_summary": "string",
+    "confidence_score": "float"
   }
 }

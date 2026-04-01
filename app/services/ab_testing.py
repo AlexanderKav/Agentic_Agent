@@ -16,28 +16,17 @@ class ABTestService:
         self, 
         user_id: int, 
         test_name: str, 
-        control: str, 
-        treatment: str, 
+        control: str = 'v1',
+        treatment: str = 'v2',
         traffic_split: float = 0.5
     ) -> str:
         """
-        Determine which version a user gets based on their ID hash.
-        
-        Args:
-            user_id: User's ID
-            test_name: Name of the A/B test
-            control: Control version (e.g., 'v1')
-            treatment: Treatment version (e.g., 'v2')
-            traffic_split: Percentage of users who get treatment (0.0 to 1.0)
-        
-        Returns:
-            Version string ('v1' or 'v2')
+        Simple two-version A/B test.
+        Returns either control or treatment based on user hash.
         """
-        # Create a deterministic hash based on user_id and test_name
+        # Create a deterministic hash
         hash_input = f"{user_id}:{test_name}"
         hash_value = hashlib.md5(hash_input.encode()).hexdigest()
-        
-        # Convert first 8 chars to integer and normalize to 0-1 range
         bucket = int(hash_value[:8], 16) / 2**32
         
         if bucket < traffic_split:
@@ -125,16 +114,16 @@ class ABTestService:
         
         metric_data = results["metrics"][metric_name]
         
-        if 'v1' not in metric_data or 'v2' not in metric_data:
+        if len(metric_data) < 2:
             return None
         
-        v1_avg = metric_data['v1']['avg']
-        v2_avg = metric_data['v2']['avg']
+        versions = list(metric_data.keys())
+        v1_avg = metric_data[versions[0]]['avg']
+        v2_avg = metric_data[versions[1]]['avg']
         
         # For latency, lower is better
         if metric_name == 'latency':
-            return 'v2' if v2_avg < v1_avg else 'v1'
+            return versions[1] if v2_avg < v1_avg else versions[0]
         
-        # For answer_length, higher might be better (more detailed)
-        # This is configurable
-        return 'v2' if v2_avg > v1_avg else 'v1'
+        # For answer_length, higher might be better
+        return versions[1] if v2_avg > v1_avg else versions[0]
