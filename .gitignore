@@ -1,5 +1,5 @@
 # Python
-__pycache__/
+**/__pycache__/
 *.py[cod]
 *.so
 *.egg-info/
@@ -58,6 +58,7 @@ htmlcov/
 # Keep important things
 !alembic/
 !alembic.ini
+!alembic/versions/
 
 # Ignore credentials
 agentic-analyst-489012-a0aa86d33643.json
