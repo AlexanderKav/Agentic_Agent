@@ -1,3 +1,0 @@
-{"timestamp": "2026-03-21T17:10:38.555972", "model": "gpt-4o-mini", "input_tokens": 15, "output_tokens": 3, "input_cost": 2e-06, "output_cost": 2e-06, "total_cost": 4e-06, "agent": "analytics.forecast", "user": "system", "session_id": 1734171254352}
-{"timestamp": "2026-03-21T17:10:38.639842", "model": "gpt-4o-mini", "input_tokens": 15, "output_tokens": 6, "input_cost": 2e-06, "output_cost": 4e-06, "total_cost": 6e-06, "agent": "analytics.forecast", "user": "system", "session_id": 1734171254352}
-{"timestamp": "2026-03-21T17:10:38.797297", "model": "gpt-4o-mini", "input_tokens": 13, "output_tokens": 3, "input_cost": 2e-06, "output_cost": 2e-06, "total_cost": 4e-06, "agent": "analytics.forecast", "user": "system", "session_id": 1734171643280}

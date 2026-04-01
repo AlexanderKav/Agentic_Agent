@@ -1,1 +1,0 @@
-{"error_type": "KeyError", "error_message": "'Revenue column not found in dataframe'", "tool": "compute_kpis", "data_shape": [2, 2], "timestamp": 1774113039.0526867, "context": {"tool": "compute_kpis", "error_type": "missing_column", "data_shape": [2, 2], "available_columns": ["date", "random_col"]}}

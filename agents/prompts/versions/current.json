@@ -1,0 +1,5 @@
+{
+  "insight_agent": "v2",
+  "planner_agent": "v1",
+  "forecast_agent": "v1"
+}

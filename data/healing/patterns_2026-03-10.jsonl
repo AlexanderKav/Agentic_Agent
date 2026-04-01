@@ -1,2 +1,0 @@
-{"error_type": "AttributeError", "error_message": "'dict' object has no attribute 'split'", "tool": "insight_generation", "data_shape": null, "timestamp": 1773145626.655467, "context": {"tool": "insight_generation", "question": "Which customers show declining revenue trends over the past 6 months?"}}
-{"error_type": "KeyError", "error_message": "'revenue'", "tool": "compute_kpis", "data_shape": [2, 2], "timestamp": 1773149243.0737932, "context": {"tool": "compute_kpis", "error_type": "missing_column", "data_shape": [2, 2], "available_columns": ["date", "random_col"]}}

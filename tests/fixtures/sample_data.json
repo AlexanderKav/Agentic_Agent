@@ -1,0 +1,21 @@
+{
+  "total_revenue": 319925.0,
+  "profit_margin": 0.49,
+  "total_profit": 158539.0,
+  "revenue_by_product": {
+    "Enterprise Plan": 221819.0,
+    "Premium Plan": 67517.0,
+    "Basic Plan": 30569.0
+  },
+  "monthly_trend": {
+    "2024-01-31": 18986,
+    "2024-02-29": 18030,
+    "2024-03-31": 18297
+  },
+  "payment_status_counts": {
+    "paid": 114,
+    "pending": 6,
+    "failed": 3,
+    "refunded": 3
+  }
+}

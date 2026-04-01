@@ -1,4 +1,0 @@
-{"timestamp": "2026-03-22T15:28:30.367611", "model": "gpt-4o-mini", "input_tokens": 19, "output_tokens": 3, "input_cost": 3e-06, "output_cost": 2e-06, "total_cost": 5e-06, "agent": "planner", "user": "system", "session_id": 127160703574992}
-{"timestamp": "2026-03-22T15:28:36.252090", "model": "gpt-4o-mini", "input_tokens": 74, "output_tokens": 117, "input_cost": 1.1e-05, "output_cost": 7e-05, "total_cost": 8.1e-05, "agent": "insight", "user": "system", "session_id": 127160703574992}
-{"timestamp": "2026-03-22T15:29:05.090254", "model": "gpt-4o-mini", "input_tokens": 2, "output_tokens": 2, "input_cost": 0.0, "output_cost": 1e-06, "total_cost": 2e-06, "agent": "planner", "user": "system", "session_id": 127160704239248}
-{"timestamp": "2026-03-22T15:29:09.785742", "model": "gpt-4o-mini", "input_tokens": 13, "output_tokens": 106, "input_cost": 2e-06, "output_cost": 6.4e-05, "total_cost": 6.6e-05, "agent": "insight", "user": "system", "session_id": 127160704239248}

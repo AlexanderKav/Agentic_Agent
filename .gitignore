@@ -1,131 +1,63 @@
-# Ignore Python cache
-__pycache__/
-
-# Ignore environment file
-.env
-
-# Ignore credentials
-agentic-analyst-489012-a0aa86d33643.json
-
-#
-large_test_file.csv
-
-#
-miscellaneous
-
-#
-.env.prod
-
-#
-scripts
-
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
 *.egg-info/
 dist/
 build/
-*.egg
+
+# Environments
+.env
+.env.*
+!.env.example
+venv/
+.venv/
 
 # Database
 *.db
-*.sqlite
-*.sqlite3
-agentic_analyst.db
-*.sql
+*.sqlite*
 !scripts/init-*.sql
 
 # Logs
 logs/
 *.log
-*.log.*
-**/logs/
-**/*.log
-logs/**/*
 
-# Alembic migrations (if using)
-alembic/
-alembic.ini
-*.pyc
-__pycache__/
-
-# Environment
-.env
-.env.*
-!.env.example
-.venv
-.venv/
-venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Project specific
+# Data / generated
+data/
 agents/charts/*.png
 agents/charts/*.jpg
 !agents/charts/.gitkeep
-data/
-*.db
-*.sqlite
-*.sqlite3
 
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
-.tox/
-
-# Docker
-.dockerignore
-
-# Node modules (frontend)
+# Frontend
 frontend/node_modules/
 frontend/build/
-frontend/.env
-frontend/.env.local
+frontend/.env*
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 
 # Secrets
 *.key
 *.pem
 *.crt
-*.json
-!*.json.example
-!*/**/*.json.example
-!agentic-analyst-*.json
-agentic-analyst-*.json
 
-# Temporary files
-temp/
+# Temp
 tmp/
+temp/
 *.tmp
-*.temp
-temp_file_*
 
-# Celery
-celerybeat-schedule
-celerybeat.pid
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
 
-# Alembic specific
-alembic/versions/
-!alembic/versions/.gitkeep
+# Keep important things
+!alembic/
+!alembic.ini
 
-updated.xlsx
-
-data.csv
+# Ignore credentials
+agentic-analyst-489012-a0aa86d33643.json
