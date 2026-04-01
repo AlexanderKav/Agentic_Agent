@@ -211,7 +211,6 @@ def ensure_insight_format(insight_data):
 class InsightAgent:
     def __init__(self, user_id=None, prompt_version=None):
         self.user_id = user_id
-        # self.ab_test = ABTestService()  # Remove this line
         self.model_router = ModelRouter()
         
         # Determine which prompt version to use
