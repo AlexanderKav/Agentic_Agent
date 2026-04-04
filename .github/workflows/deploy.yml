@@ -3,52 +3,125 @@ name: Deploy
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags
+      - 'v*'  # Trigger on version tags (v1.0.0, v1.1.0, etc.)
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix=
+          type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: docker/Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
   deploy-staging:
     runs-on: ubuntu-latest
     environment: staging
+    needs: build-and-push
+    if: github.event_name == 'push' || github.event.inputs.environment == 'staging'
     
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Run tests
-      run: |
-        pip install -r requirements.txt
-        pytest tests/unit -v
-        pytest tests/integration -v
-    
-    - name: Build Docker image
-      run: |
-        docker build -t agentic-analyst:${{ github.sha }} .
-        docker tag agentic-analyst:${{ github.sha }} agentic-analyst:staging-latest
+    - uses: actions/checkout@v4
     
     - name: Deploy to staging
       run: |
-        echo "Deploying to staging..."
-        # Add your deployment commands here
-        # e.g., kubectl set image, docker push, etc.
+        echo "🚀 Deploying to STAGING environment..."
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+        
+        # Example for Docker Compose deployment
+        mkdir -p deploy
+        cat > deploy/docker-compose.staging.yml << EOF
+        version: '3.8'
+        services:
+          app:
+            image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            environment:
+              - ENVIRONMENT=staging
+              - DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}
+              - REDIS_URL=${{ secrets.STAGING_REDIS_URL }}
+              - OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+              - SECRET_KEY=${{ secrets.SECRET_KEY }}
+        EOF
+        
+        # Add your actual deployment command here
+        # Examples:
+        # - docker stack deploy -c deploy/docker-compose.staging.yml agentic-analyst
+        # - kubectl set image deployment/agentic-analyst app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        # - ssh ${{ secrets.DEPLOY_HOST }} "docker pull ... && docker-compose up -d"
+        
+        echo "✅ Staging deployment initiated"
 
   deploy-production:
     runs-on: ubuntu-latest
     environment: production
     needs: deploy-staging
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Build production image
-      run: |
-        docker build -t agentic-analyst:${{ github.ref_name }} .
+    - uses: actions/checkout@v4
     
     - name: Deploy to production
       run: |
-        echo "Deploying to production..."
-        # Add your production deployment commands
+        echo "🚀 Deploying to PRODUCTION environment..."
+        echo "Version: ${{ github.ref_name }}"
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
+        
+        # Add your production deployment command here
+        # Production should have blue-green deployment or rolling update
+        
+        echo "✅ Production deployment initiated"
+    
+    - name: Notify deployment status
+      if: always()
+      run: |
+        # Add Slack/Discord notification here
+        echo "Deployment status: ${{ job.status }}"

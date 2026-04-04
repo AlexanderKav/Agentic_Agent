@@ -1,95 +1,148 @@
-import os
+"""
+Insight Agent - Generates AI-powered insights from analysis results
+"""
+
+import hashlib
 import json
+import os
 import re
-import time  # ADD THIS - was missing
+import time
 from datetime import datetime
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from agents.monitoring import get_performance_tracker, timer, get_audit_logger, get_cost_tracker
+from typing import Any, Dict, List, Optional, Tuple, Union
+import math
+
 import numpy as np
 import pandas as pd
-import hashlib
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 
-from agents.prompts import PromptRegistry
 from agents.model_router import ModelRouter
+from agents.monitoring import get_audit_logger, get_cost_tracker, get_performance_tracker, timer
+from agents.prompts import PromptRegistry
 
 
+# In agents/insight_agent.py, update the make_json_safe function:
 
-def make_json_safe(obj):
-    """Recursively convert all objects to JSON-serializable types."""
-    if isinstance(obj, dict):
-        return {str(k): make_json_safe(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [make_json_safe(x) for x in obj]
-    elif isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
-        return int(obj)
-    elif isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
+def make_json_safe(obj: Any) -> Any:
+    """
+    Recursively convert all objects to JSON-serializable types.
+    
+    Args:
+        obj: Object to convert
+        
+    Returns:
+        JSON-serializable object
+    """
+    # Handle None
+    if obj is None:
+        return None
+    
+    # Handle NaN and Inf for float types
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    
+    # Handle numpy floats (which may contain NaN/Inf)
+    if isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
         if np.isnan(obj) or np.isinf(obj):
             return None
         return float(obj)
-    elif isinstance(obj, (np.bool_)):
-        return bool(obj)
-    elif isinstance(obj, (pd.Timestamp, np.datetime64, datetime)):
-        return obj.isoformat()
-    elif isinstance(obj, (pd.Timedelta)):
-        return str(obj)
-    elif isinstance(obj, (str, int, float, bool)):
-        return obj
-    elif obj is None:
-        return None
-    else:
-        try:
-            return str(obj)
-        except:
-            return None
-
-
-def extract_json_from_text(text):
-    """Extract first JSON block from text safely, handling both // and # comments."""
-    import re
-    import json
     
+    # Handle numpy integers
+    if isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
+        return int(obj)
+    
+    # Handle numpy booleans
+    if isinstance(obj, (np.bool_)):
+        return bool(obj)
+    
+    # Handle numpy arrays - convert to list FIRST
+    if isinstance(obj, np.ndarray):
+        return make_json_safe(obj.tolist())
+    
+    # Handle pandas Timestamp and numpy datetime64
+    if isinstance(obj, (pd.Timestamp, np.datetime64, datetime)):
+        return obj.isoformat()
+    
+    # Handle pandas Timedelta
+    if isinstance(obj, (pd.Timedelta)):
+        return str(obj)
+    
+    # Handle pandas Series - convert to dict
+    if isinstance(obj, pd.Series):
+        return make_json_safe(obj.to_dict())
+    
+    # Handle pandas DataFrame - convert to list of dicts
+    if isinstance(obj, pd.DataFrame):
+        return make_json_safe(obj.to_dict(orient='records'))
+    
+    # Handle dictionaries
+    if isinstance(obj, dict):
+        return {str(k): make_json_safe(v) for k, v in obj.items()}
+    
+    # Handle lists/tuples/sets
+    if isinstance(obj, (list, tuple, set)):
+        return [make_json_safe(x) for x in obj]
+    
+    # Handle basic types
+    if isinstance(obj, (str, int, bool)):
+        return obj
+    
+    # Fallback: try to convert to string
+    try:
+        return str(obj)
+    except Exception:
+        return None
+    
+    
+def extract_json_from_text(text: str) -> Dict[str, Any]:
+    """
+    Extract first JSON block from text safely, handling both // and # comments.
+    
+    Args:
+        text: Raw text containing JSON
+        
+    Returns:
+        Parsed JSON dictionary, empty dict if parsing fails
+    """
     print(f"\n🔧 Cleaning JSON response (original length: {len(text)} chars)")
     
-    # First, remove any comments (both // and #) from the text
+    # Remove comments line by line
     lines = text.split('\n')
     cleaned_lines = []
     
     for line in lines:
-        # Check for // comments
+        # Handle // comments
         if '//' in line:
             parts = line.split('//')
             before_comment = parts[0].rstrip()
-            if before_comment and before_comment[-1] in '0123456789"\'':  # Likely data with // in value
-                cleaned_lines.append(line)  # Keep the whole line
+            if before_comment and before_comment[-1] in '0123456789"\'':
+                cleaned_lines.append(line)  # Keep if number/string contains // as data
             else:
-                cleaned_lines.append(parts[0].rstrip())  # Remove comment
-        # Check for # comments
+                cleaned_lines.append(parts[0].rstrip())
+        # Handle # comments
         elif '#' in line:
             parts = line.split('#')
             before_comment = parts[0].rstrip()
-            # Only remove if it's a real comment (not inside a string)
             if before_comment and before_comment[-1] not in '"\'0123456789':
-                cleaned_lines.append(parts[0].rstrip())  # Remove comment
+                cleaned_lines.append(parts[0].rstrip())
             else:
-                cleaned_lines.append(line)  # Keep the whole line
+                cleaned_lines.append(line)
         else:
             cleaned_lines.append(line)
     
     cleaned_text = '\n'.join(cleaned_lines)
     
     # Fix numbers with commas (e.g., "25,895.0" -> "25895.0")
-    def fix_number_commas(match):
-        """Remove commas from numbers"""
-        num_str = match.group(0)
-        return num_str.replace(',', '')
+    def fix_number_commas(match: re.Match) -> str:
+        """Remove commas from numbers."""
+        return match.group(0).replace(',', '')
     
     cleaned_text = re.sub(r'\d+,\d+\.?\d*', fix_number_commas, cleaned_text)
-    
-    # Remove any remaining comments
     cleaned_text = re.sub(r'#.*$', '', cleaned_text, flags=re.MULTILINE)
     
-    # Try to find JSON block
+    # Find JSON block
     match = re.search(r'\{.*\}', cleaned_text, flags=re.DOTALL)
     if not match:
         print("⚠️ No JSON pattern found in text")
@@ -97,60 +150,53 @@ def extract_json_from_text(text):
 
     json_text = match.group()
     
-    # Remove trailing commas before } or ]
-    json_text = re.sub(r',\s*([}\]])', r'\1', json_text)
-    
-    # Remove any remaining # comments inside the JSON
-    json_text = re.sub(r'#.*?\n', '\n', json_text)
-    
-    # Remove any placeholder comments
+    # Clean JSON
+    json_text = re.sub(r',\s*([}\]])', r'\1', json_text)  # Remove trailing commas
+    json_text = re.sub(r'#.*?\n', '\n', json_text)  # Remove # comments
     json_text = re.sub(r'\s*#.*$', '', json_text, flags=re.MULTILINE)
+    json_text = re.sub(r'\n\s*\n', '\n', json_text)  # Remove blank lines
+
+    # Attempt to parse with multiple strategies
+    parse_strategies = [
+        lambda: json.loads(json_text),
+        lambda: json.loads(re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_text)),
+        lambda: json.loads(re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])', r':"\1"\2', json_text)),
+    ]
     
-    # Remove blank lines
-    json_text = re.sub(r'\n\s*\n', '\n', json_text)
-
-    try:
-        return json.loads(json_text)
-    except json.JSONDecodeError as e:
-        print(f"⚠️ First parse attempt failed: {e}")
+    for i, strategy in enumerate(parse_strategies):
         try:
-            # Second try: fix unquoted keys
-            json_text = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_text)
-            return json.loads(json_text)
-        except json.JSONDecodeError as e2:
-            print(f"⚠️ Second parse attempt failed: {e2}")
-            try:
-                # Third try: fix unquoted string values
-                json_text = re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([,}])', r':"\1"\2', json_text)
-                return json.loads(json_text)
-            except json.JSONDecodeError as e3:
-                print(f"⚠️ Third parse attempt failed: {e3}")
-                print(f"Problematic JSON text (first 500 chars): {json_text[:500]}...")
-                
-                # Last resort: try to extract just the answer field
-                try:
-                    answer_match = re.search(r'"answer"\s*:\s*"([^"]+)"', json_text)
-                    summary_match = re.search(r'"human_readable_summary"\s*:\s*"([^"]+)"', json_text)
-                    
-                    result = {
-                        "answer": answer_match.group(1) if answer_match else "Analysis complete.",
-                        "supporting_insights": {},
-                        "anomalies": {},
-                        "recommended_metrics": {},
-                        "human_readable_summary": summary_match.group(1) if summary_match else "See analysis results."
-                    }
-                    print("✅ Extracted basic fields using regex fallback")
-                    return result
-                except:
-                    pass
-                
-                return {}
+            return strategy()
+        except json.JSONDecodeError as e:
+            print(f"⚠️ Parse attempt {i + 1} failed: {e}")
+            continue
+    
+    # Fallback: extract basic fields with regex
+    print("⚠️ All JSON parsing attempts failed, using regex fallback")
+    try:
+        answer_match = re.search(r'"answer"\s*:\s*"([^"]+)"', json_text)
+        summary_match = re.search(r'"human_readable_summary"\s*:\s*"([^"]+)"', json_text)
+        
+        return {
+            "answer": answer_match.group(1) if answer_match else "Analysis complete.",
+            "supporting_insights": {},
+            "anomalies": {},
+            "recommended_metrics": {},
+            "human_readable_summary": summary_match.group(1) if summary_match else "See analysis results."
+        }
+    except Exception:
+        return {}
 
 
-def ensure_insight_format(insight_data):
+def ensure_insight_format(insight_data: Any) -> Dict[str, Any]:
     """
     Ensure insight data has the correct structure with string fields.
     This is the central sanitizer for all insight outputs.
+    
+    Args:
+        insight_data: Raw insight data from LLM
+        
+    Returns:
+        Properly formatted insight dictionary
     """
     result = {
         "answer": "",
@@ -168,7 +214,6 @@ def ensure_insight_format(insight_data):
     # Extract and sanitize answer
     answer = insight_data.get('answer', '')
     if isinstance(answer, dict):
-        # If answer is a dict, try to get the actual answer field
         answer = answer.get('answer', str(answer))
     result["answer"] = str(answer) if answer else "Analysis complete."
     
@@ -209,21 +254,51 @@ def ensure_insight_format(insight_data):
 
 
 class InsightAgent:
-    def __init__(self, user_id=None, prompt_version=None):
-        self.user_id = user_id
-        self.model_router = ModelRouter()
+    """
+    Agent for generating AI-powered insights from analysis results.
+    
+    Features:
+    - Versioned prompt management
+    - Model routing based on complexity
+    - JSON extraction and sanitization
+    - Performance monitoring and cost tracking
+    """
+    
+    def __init__(
+        self,
+        user_id: Optional[int] = None,
+        prompt_version: Optional[str] = None,
+        enable_cost_tracking: bool = True
+    ) -> None:
+        """
+        Initialize the Insight Agent.
+        
+        Args:
+            user_id: User ID for A/B testing and tracking
+            prompt_version: Specific prompt version to use (None = use current)
+            enable_cost_tracking: Whether to track API costs
+        """
+        self.user_id: Optional[int] = user_id
+        self.enable_cost_tracking: bool = enable_cost_tracking
+        
+        # Initialize monitoring
+        self.perf_tracker = get_performance_tracker()
+        self.audit_logger = get_audit_logger()
+        self.cost_tracker = get_cost_tracker() if enable_cost_tracking else None
+        
+        # Initialize model router
+        self.model_router: ModelRouter = ModelRouter()
         
         # Determine which prompt version to use
         if prompt_version:
-            self.prompt_version = prompt_version
+            self.prompt_version: str = prompt_version
             print(f"📌 Using explicit prompt version: {self.prompt_version}")
         else:
-            # Always use the version from current.json (which is v3)
             self.prompt_version = PromptRegistry.get_current_version('insight_agent')
             print(f"📌 Using default version from config: {self.prompt_version}")
         
         # Load the prompt
-        self.prompt_data = PromptRegistry.get_prompt('insight_agent', self.prompt_version)
+        self.prompt_data: Dict[str, Any] = PromptRegistry.get_prompt('insight_agent', self.prompt_version)
         
         # Initialize LLM
         self._init_llm()
@@ -232,10 +307,13 @@ class InsightAgent:
         print(f"   Model: {self.prompt_data['parameters']['model']}")
         print(f"   Temperature: {self.prompt_data['parameters']['temperature']}")
     
-    def _init_llm(self):
+    def _init_llm(self) -> None:
+        """Initialize the LLM with parameters from the prompt configuration."""
         params = self.prompt_data.get('parameters', {})
+        model_name = params.get('model', 'gpt-4o-mini')
+        
         self.llm = ChatOpenAI(
-            model=params.get('model', 'gpt-4o-mini'),
+            model=model_name,
             temperature=params.get('temperature', 0.6),
             api_key=os.getenv("OPENAI_API_KEY")
         )
@@ -243,22 +321,53 @@ class InsightAgent:
             self.prompt_data['template']
         )
     
+    def _estimate_tokens(self, text: str) -> int:
+        """Roughly estimate token count (4 chars per token is a common approximation)."""
+        return len(text) // 4
+    
+    def _track_cost(self, input_text: str, output_text: str) -> None:
+        """Track API cost for the call."""
+        if not self.enable_cost_tracking or not self.cost_tracker:
+            return
+        
+        input_tokens = self._estimate_tokens(input_text)
+        output_tokens = self._estimate_tokens(output_text)
+        
+        self.cost_tracker.track_call(
+            model='insight_agent',
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            agent='insight_agent',
+            user=str(self.user_id) if self.user_id else 'anonymous',
+            session_id=id(self)
+        )
+    
     @timer(operation='generate_insights')
-    def generate_insights(self, data, question="General business insights"):
-        """Generate insights with version tracking"""
-        start_time = time.time()  # ADD THIS - was missing
+    def generate_insights(
+        self,
+        data: Union[pd.DataFrame, Dict[str, Any], List[Any]],
+        question: str = "General business insights"
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Generate insights from analysis results.
+        
+        Args:
+            data: Analysis data (DataFrame, dict, or list)
+            question: User's question or context
+            
+        Returns:
+            Tuple of (raw_response, sanitized_insights)
+        """
+        start_time = time.time()
         
         try:
             # Record which version was used
             print(f"📊 Using prompt version: {self.prompt_version}")
             
-            # Prepare data
-            if hasattr(data, "to_dict"):
-                data_dict = data.to_dict(orient="records")
-            else:
-                data_dict = make_json_safe(data)
+            # Prepare data for JSON serialization
+            data_dict = self._prepare_data(data)
             
-            # Check if there's a skipped tools note
+            # Add note about skipped tools if present
             if isinstance(data_dict, dict):
                 skipped_note = data_dict.pop("_skipped_tools_note", None)
                 if skipped_note:
@@ -272,17 +381,28 @@ class InsightAgent:
             response = self.llm.invoke(messages)
             raw = response.content
             
-            print("\n" + "="*60)
-            print("RAW INSIGHT RESPONSE:")
-            print("="*60)
-            print(raw)
-            print("="*60 + "\n")
+            # Track cost
+            self._track_cost(data_json, raw)
             
-            # Parse JSON
+            # Log the response for debugging
+            self._log_raw_response(raw)
+            
+            # Parse and sanitize JSON
             parsed_json = extract_json_from_text(raw)
-            
-            # Sanitize the output
             sanitized_insights = ensure_insight_format(parsed_json)
+            
+            # Log to audit
+            self.audit_logger.log_action(
+                action_type='generate_insights',
+                agent='insight_agent',
+                details={
+                    'prompt_version': self.prompt_version,
+                    'question_length': len(question),
+                    'data_size': len(data_json),
+                    'response_length': len(raw)
+                },
+                session_id=id(self)
+            )
             
             return raw, sanitized_insights
             
@@ -297,3 +417,61 @@ class InsightAgent:
                 "human_readable_summary": "An error occurred during analysis. Please try again or rephrase your question."
             })
             return "", error_insights
+    
+    def _prepare_data(self, data: Union[pd.DataFrame, Dict[str, Any], List[Any]]) -> Any:
+        """
+        Prepare data for JSON serialization.
+        
+        Args:
+            data: Raw data input
+            
+        Returns:
+            JSON-serializable data
+        """
+        if hasattr(data, "to_dict"):
+            return data.to_dict(orient="records")
+        return make_json_safe(data)
+    
+    def _log_raw_response(self, raw: str) -> None:
+        """Log the raw response for debugging."""
+        print("\n" + "=" * 60)
+        print("RAW INSIGHT RESPONSE:")
+        print("=" * 60)
+        # Truncate very long responses
+        if len(raw) > 2000:
+            print(raw[:2000] + "\n... (truncated)")
+        else:
+            print(raw)
+        print("=" * 60 + "\n")
+    
+    def reload_prompt(self, version: Optional[str] = None) -> None:
+        """
+        Reload the prompt configuration.
+        
+        Args:
+            version: New prompt version to use (None = keep current)
+        """
+        if version:
+            self.prompt_version = version
+        
+        self.prompt_data = PromptRegistry.get_prompt('insight_agent', self.prompt_version)
+        self._init_llm()
+        
+        print(f"🔄 Prompt reloaded: version {self.prompt_version}")
+    
+    def get_version_info(self) -> Dict[str, Any]:
+        """
+        Get information about the current prompt version.
+        
+        Returns:
+            Dictionary with version information
+        """
+        return {
+            "version": self.prompt_version,
+            "model": self.prompt_data.get('parameters', {}).get('model', 'unknown'),
+            "temperature": self.prompt_data.get('parameters', {}).get('temperature', 0.6),
+            "template_length": len(self.prompt_data.get('template', ''))
+        }
+
+
+__all__ = ['InsightAgent', 'make_json_safe', 'extract_json_from_text', 'ensure_insight_format']

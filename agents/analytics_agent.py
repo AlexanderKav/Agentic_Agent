@@ -2,13 +2,22 @@
 Analytics Agent - Performs data analysis with monitoring, self-healing, and cost tracking
 """
 
-import pandas as pd
+import warnings
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Union
+
 import numpy as np
+import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.seasonal import seasonal_decompose
+
 from agents.monitoring import get_performance_tracker, timer, get_audit_logger, get_cost_tracker
 from agents.self_healing import get_healing_agent
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore", category=UserWarning)
+
 
 class AnalyticsAgent:
     """
@@ -16,7 +25,7 @@ class AnalyticsAgent:
     Works with SchemaMapper output which provides consistent column names.
     """
 
-    def __init__(self, df):
+    def __init__(self, df: pd.DataFrame):
         """
         Initialize analytics agent with dataframe.
         
@@ -57,11 +66,40 @@ class AnalyticsAgent:
         )
 
     # -----------------------------
+    # Helper Methods
+    # -----------------------------
+    def _safe_floor(self, value: float) -> float:
+        """Safely apply floor operation, handling NaN values."""
+        if pd.isna(value):
+            return 0.0
+        return float(np.floor(value))
+
+    def _is_declining_trend(self, trend_values: List[float]) -> bool:
+        """Check if trend is declining."""
+        if len(trend_values) < 2:
+            return False
+        return all(earlier >= later for earlier, later in zip(trend_values, trend_values[1:]))
+
+    def _get_monthly_revenue(self, df: pd.DataFrame) -> pd.Series:
+        """Helper to get monthly revenue from a dataframe."""
+        if 'date' not in df.columns or 'revenue' not in df.columns:
+            return pd.Series(dtype=float)
+        
+        df_copy = df.copy()
+        df_copy['date'] = pd.to_datetime(df_copy['date'])
+        df_copy['month'] = df_copy['date'].dt.to_period('M')
+        
+        monthly = df_copy.groupby('month')['revenue'].sum()
+        monthly.index = monthly.index.to_timestamp()
+        
+        return monthly
+
+    # -----------------------------
     # KPIs
     # -----------------------------
     @timer(operation='compute_kpis')
-    def compute_kpis(self):
-        """Compute KPIs with monitoring"""
+    def compute_kpis(self) -> Dict[str, float]:
+        """Compute KPIs with monitoring."""
         try:
             if "revenue" not in self.df.columns:
                 recovered = self._recover_kpis_with_alternatives()
@@ -69,19 +107,19 @@ class AnalyticsAgent:
                     return recovered
                 raise KeyError("Revenue column not found in dataframe")
             
-            total_revenue = np.floor(self.df["revenue"].sum())
+            total_revenue = self._safe_floor(self.df["revenue"].sum())
             
-            total_cost = 0
+            total_cost = 0.0
             total_profit = total_revenue
             profit_margin = 1.0
             
             if "cost" in self.df.columns:
-                total_cost = np.floor(self.df["cost"].sum())
+                total_cost = self._safe_floor(self.df["cost"].sum())
                 total_profit = total_revenue - total_cost
                 profit_margin = total_profit / total_revenue if total_revenue > 0 else 0
                 profit_margin = np.floor(profit_margin * 100) / 100
 
-            avg_order_value = np.floor(self.df["revenue"].mean())
+            avg_order_value = self._safe_floor(self.df["revenue"].mean())
             
             result = {
                 "total_revenue": float(total_revenue),
@@ -132,8 +170,8 @@ class AnalyticsAgent:
             )
             raise
 
-    def _recover_kpis_with_alternatives(self):
-        """Recovery method for missing columns - kept for backward compatibility"""
+    def _recover_kpis_with_alternatives(self) -> Optional[Dict[str, float]]:
+        """Recovery method for missing columns - kept for backward compatibility."""
         try:
             revenue_col = None
             cost_col = None
@@ -154,18 +192,18 @@ class AnalyticsAgent:
                     break
             
             if revenue_col:
-                total_revenue = np.floor(self.df[revenue_col].sum())
+                total_revenue = self._safe_floor(self.df[revenue_col].sum())
                 
                 if cost_col:
-                    total_cost = np.floor(self.df[cost_col].sum())
+                    total_cost = self._safe_floor(self.df[cost_col].sum())
                     total_profit = total_revenue - total_cost
                     profit_margin = total_profit / total_revenue if total_revenue > 0 else 0
                 else:
-                    total_cost = np.floor(total_revenue * 0.6)
+                    total_cost = self._safe_floor(total_revenue * 0.6)
                     total_profit = total_revenue - total_cost
                     profit_margin = 0.4
                 
-                avg_order_value = np.floor(self.df[revenue_col].mean())
+                avg_order_value = self._safe_floor(self.df[revenue_col].mean())
                 
                 result = {
                     "total_revenue": float(total_revenue),
@@ -197,8 +235,8 @@ class AnalyticsAgent:
     # Revenue breakdowns
     # -----------------------------
     @timer(operation='revenue_by_customer')
-    def revenue_by_customer(self):
-        """Get revenue by customer with monitoring"""
+    def revenue_by_customer(self) -> pd.Series:
+        """Get revenue by customer with monitoring."""
         try:
             if "customer" not in self.df.columns:
                 self.audit_logger.log_action(
@@ -232,8 +270,8 @@ class AnalyticsAgent:
             raise
 
     @timer(operation='revenue_by_product')
-    def revenue_by_product(self):
-        """Get revenue by product with monitoring"""
+    def revenue_by_product(self) -> pd.Series:
+        """Get revenue by product with monitoring."""
         try:
             if "product" not in self.df.columns:
                 self.audit_logger.log_action(
@@ -267,8 +305,8 @@ class AnalyticsAgent:
             raise
 
     @timer(operation='revenue_by_region')
-    def revenue_by_region(self):
-        """Get revenue by region with monitoring"""
+    def revenue_by_region(self) -> pd.Series:
+        """Get revenue by region with monitoring."""
         try:
             if "region" not in self.df.columns:
                 self.audit_logger.log_action(
@@ -305,8 +343,8 @@ class AnalyticsAgent:
     # Monthly metrics
     # -----------------------------
     @timer(operation='monthly_revenue')
-    def monthly_revenue(self):
-        """Get monthly revenue with monitoring"""
+    def monthly_revenue(self) -> pd.Series:
+        """Get monthly revenue with monitoring."""
         try:
             if "date" not in self.df.columns or "revenue" not in self.df.columns:
                 return pd.Series(dtype=float)
@@ -336,8 +374,8 @@ class AnalyticsAgent:
             raise
 
     @timer(operation='monthly_profit')
-    def monthly_profit(self):
-        """Get monthly profit with monitoring"""
+    def monthly_profit(self) -> pd.Series:
+        """Get monthly profit with monitoring."""
         try:
             if "date" not in self.df.columns or "profit" not in self.df.columns:
                 return pd.Series(dtype=float)
@@ -367,8 +405,8 @@ class AnalyticsAgent:
             raise
 
     @timer(operation='monthly_growth')
-    def monthly_growth(self):
-        """Get monthly growth with monitoring"""
+    def monthly_growth(self) -> pd.Series:
+        """Get monthly growth with monitoring."""
         try:
             monthly = self.monthly_revenue()
             if monthly.empty or len(monthly) < 2:
@@ -400,8 +438,8 @@ class AnalyticsAgent:
     # -----------------------------
     
     @timer(operation='detect_seasonality')
-    def detect_seasonality(self):
-        """Detect seasonal patterns in monthly data"""
+    def detect_seasonality(self) -> Dict[str, Any]:
+        """Detect seasonal patterns in monthly data."""
         try:
             monthly = self.monthly_revenue()
             
@@ -465,9 +503,9 @@ class AnalyticsAgent:
             return {"has_seasonality": False, "error": str(e)}
 
     @timer(operation='forecast_revenue_with_explanation')
-    def forecast_revenue_with_explanation(self, steps=3, period_label=None):
+    def forecast_revenue_with_explanation(self, steps: int = 3, period_label: Optional[str] = None) -> Dict[str, Any]:
         """
-        Forecast revenue with natural language explanation
+        Forecast revenue with natural language explanation.
         
         Args:
             steps: Number of months to forecast (default 3 for quarter)
@@ -560,8 +598,17 @@ class AnalyticsAgent:
             }
 
     @timer(operation='forecast_with_confidence')
-    def forecast_with_confidence(self, steps=3, confidence_level=0.95):
-        """Forecast revenue with confidence intervals"""
+    # In the AnalyticsAgent class, update the forecast methods to accept period_label parameter
+
+    @timer(operation='forecast_with_confidence')
+    def forecast_with_confidence(self, steps: int = 3, confidence_level: float = 0.95, period_label: str = None) -> Dict[str, Any]:
+        """Forecast revenue with confidence intervals.
+        
+        Args:
+            steps: Number of months to forecast
+            confidence_level: Confidence level (0.95 = 95%)
+            period_label: Optional label for the forecast period (e.g., "Q1 2025")
+        """
         try:
             monthly = self.monthly_revenue()
             
@@ -583,7 +630,7 @@ class AnalyticsAgent:
             # Get forecast with confidence intervals
             forecast_result = model_fit.get_forecast(steps=steps)
             forecast = forecast_result.predicted_mean
-            conf_int = forecast_result.conf_int(alpha=1-confidence_level)
+            conf_int = forecast_result.conf_int(alpha=1 - confidence_level)
             
             result = np.floor(forecast)
             lower = np.floor(conf_int.iloc[:, 0])
@@ -595,18 +642,22 @@ class AnalyticsAgent:
                 details={
                     'steps': steps,
                     'confidence_level': confidence_level,
-                    'forecast': result.tolist() if hasattr(result, 'tolist') else list(result)
+                    'forecast': result.tolist() if hasattr(result, 'tolist') else list(result),
+                    'period_label': period_label
                 },
                 session_id=self.session_id
             )
+            
+            period_text = f" for {period_label}" if period_label else ""
             
             return {
                 "forecast": result.tolist() if hasattr(result, 'tolist') else list(result),
                 "lower_bound": lower.tolist() if hasattr(lower, 'tolist') else list(lower),
                 "upper_bound": upper.tolist() if hasattr(upper, 'tolist') else list(upper),
                 "confidence_level": confidence_level,
-                "explanation": f"With {confidence_level*100:.0f}% confidence, revenue next month will be between ${lower.iloc[0]:,.0f} and ${upper.iloc[0]:,.0f}.",
-                "method": "ARIMA (1,1,1) with confidence intervals"
+                "explanation": f"With {confidence_level * 100:.0f}% confidence, revenue next month will be between ${lower.iloc[0]:,.0f} and ${upper.iloc[0]:,.0f}.{period_text}",
+                "method": "ARIMA (1,1,1) with confidence intervals",
+                "period": period_label
             }
             
         except Exception as e:
@@ -618,9 +669,15 @@ class AnalyticsAgent:
                 "error": str(e)
             }
 
+
     @timer(operation='forecast_ensemble')
-    def forecast_ensemble(self, steps=3):
-        """Compare multiple forecasting methods and return ensemble"""
+    def forecast_ensemble(self, steps: int = 3, period_label: str = None) -> Dict[str, Any]:
+        """Compare multiple forecasting methods and return ensemble.
+        
+        Args:
+            steps: Number of months to forecast
+            period_label: Optional label for the forecast period (e.g., "Q1 2025")
+        """
         try:
             monthly = self.monthly_revenue()
             
@@ -681,17 +738,21 @@ class AnalyticsAgent:
                 agent='analytics',
                 details={
                     'methods_used': [m for m in forecasts if isinstance(forecasts[m], list)],
-                    'steps': steps
+                    'steps': steps,
+                    'period_label': period_label
                 },
                 session_id=self.session_id
             )
             
+            period_text = f" for {period_label}" if period_label else ""
+            
             return {
                 "forecasts": forecasts,
                 "ensemble": ensemble_floor,
-                "explanation": "Combined forecast using multiple methods for more reliable predictions.",
+                "explanation": f"Combined forecast using multiple methods for more reliable predictions.{period_text}",
                 "methods_successful": [m for m in forecasts if isinstance(forecasts[m], list)],
-                "recommended": "ensemble" if ensemble_floor else list(forecasts.keys())[0]
+                "recommended": "ensemble" if ensemble_floor else list(forecasts.keys())[0],
+                "period": period_label
             }
             
         except Exception as e:
@@ -703,12 +764,15 @@ class AnalyticsAgent:
                 "error": str(e)
             }
 
-    # -----------------------------
-    # Original forecast method (kept for backward compatibility)
-    # -----------------------------
+
     @timer(operation='forecast_revenue')
-    def forecast_revenue(self, steps=3):
-        """Forecast revenue with monitoring (original method)"""
+    def forecast_revenue(self, steps: int = 3, period_label: str = None) -> Optional[pd.Series]:
+        """Forecast revenue with monitoring (original method).
+        
+        Args:
+            steps: Number of months to forecast
+            period_label: Optional label for the forecast period (e.g., "Q1 2025")
+        """
         try:
             monthly = self.monthly_revenue()
             
@@ -718,7 +782,7 @@ class AnalyticsAgent:
                 self.audit_logger.log_action(
                     action_type='forecast_insufficient_data',
                     agent='analytics',
-                    details={'months_available': len(monthly)},
+                    details={'months_available': len(monthly), 'period_label': period_label},
                     session_id=self.session_id
                 )
                 return None
@@ -748,7 +812,8 @@ class AnalyticsAgent:
                 details={
                     'historical_periods': len(monthly),
                     'forecast_steps': steps,
-                    'forecast': [float(x) for x in result]
+                    'forecast': [float(x) for x in result],
+                    'period_label': period_label
                 },
                 session_id=self.session_id
             )
@@ -765,13 +830,13 @@ class AnalyticsAgent:
     # Quantity metrics
     # -----------------------------
     @timer(operation='total_units_sold')
-    def total_units_sold(self):
-        """Get total units sold with monitoring"""
+    def total_units_sold(self) -> Optional[float]:
+        """Get total units sold with monitoring."""
         try:
             if "quantity" not in self.df.columns:
                 return None
                 
-            result = np.floor(self.df["quantity"].sum())
+            result = self._safe_floor(self.df["quantity"].sum())
             
             self.audit_logger.log_action(
                 action_type='total_units_sold',
@@ -787,8 +852,8 @@ class AnalyticsAgent:
             raise
 
     @timer(operation='revenue_per_unit')
-    def revenue_per_unit(self):
-        """Get revenue per unit with monitoring"""
+    def revenue_per_unit(self) -> Optional[float]:
+        """Get revenue per unit with monitoring."""
         try:
             if "quantity" not in self.df.columns:
                 return None
@@ -797,7 +862,7 @@ class AnalyticsAgent:
             if total_quantity == 0:
                 return None
                 
-            result = np.floor(self.df["revenue"].sum() / total_quantity)
+            result = self._safe_floor(self.df["revenue"].sum() / total_quantity)
             
             self.audit_logger.log_action(
                 action_type='revenue_per_unit',
@@ -816,8 +881,8 @@ class AnalyticsAgent:
     # Payment analysis
     # -----------------------------
     @timer(operation='revenue_by_payment_status')
-    def revenue_by_payment_status(self):
-        """Get revenue by payment status with monitoring"""
+    def revenue_by_payment_status(self) -> Optional[pd.Series]:
+        """Get revenue by payment status with monitoring."""
         try:
             if "payment_status" not in self.df.columns:
                 return None
@@ -850,8 +915,8 @@ class AnalyticsAgent:
     # Anomaly detection
     # -----------------------------
     @timer(operation='detect_revenue_spikes')
-    def detect_revenue_spikes(self, threshold_std=2, by_product=False):
-        """Detect revenue spikes with consistent format for UI
+    def detect_revenue_spikes(self, threshold_std: int = 2, by_product: bool = False) -> Dict[str, Any]:
+        """Detect revenue spikes with consistent format for UI.
         
         Args:
             threshold_std: Number of standard deviations for threshold
@@ -938,27 +1003,13 @@ class AnalyticsAgent:
             self.healer.analyze_failure(e, {'tool': 'detect_revenue_spikes'})
             print(f"Error detecting revenue spikes: {e}")
             return {}
-        
-    def _get_monthly_revenue(self, df):
-        """Helper to get monthly revenue from a dataframe"""
-        if 'date' not in df.columns or 'revenue' not in df.columns:
-            return pd.Series(dtype=float)
-        
-        df_copy = df.copy()
-        df_copy['date'] = pd.to_datetime(df_copy['date'])
-        df_copy['month'] = df_copy['date'].dt.to_period('M')
-        
-        monthly = df_copy.groupby('month')['revenue'].sum()
-        monthly.index = monthly.index.to_timestamp()
-        
-        return monthly
 
     # -----------------------------
     # Generate human-readable summary
     # -----------------------------
     @timer(operation='generate_summary')
-    def generate_summary(self):
-        """Generate summary with monitoring"""
+    def generate_summary(self) -> str:
+        """Generate summary with monitoring."""
         try:
             summary = ""
             kpis = self.compute_kpis()
@@ -983,9 +1034,8 @@ class AnalyticsAgent:
                 summary += f"Latest month ({latest_month}) growth: {latest_growth:.0f}%.\n"
 
             anomalies = self.detect_revenue_spikes()
-            if not anomalies.empty:
-                months = ", ".join([d.strftime("%B %Y") for d in anomalies.index])
-                summary += f"Revenue anomalies detected in: {months}.\n"
+            if anomalies:
+                summary += f"Revenue anomalies detected.\n"
 
             payment_by_status = self.revenue_by_payment_status()
             if payment_by_status is not None and not payment_by_status.empty:
@@ -1010,8 +1060,8 @@ class AnalyticsAgent:
     # Monthly revenue per product
     # -----------------------------
     @timer(operation='monthly_revenue_by_product')
-    def monthly_revenue_by_product(self):
-        """Get monthly revenue per product"""
+    def monthly_revenue_by_product(self) -> Dict[str, Any]:
+        """Get monthly revenue per product."""
         try:
             if "product" not in self.df.columns or "date" not in self.df.columns:
                 self.audit_logger.log_action(
@@ -1057,7 +1107,7 @@ class AnalyticsAgent:
     # Monthly revenue per customer
     # -----------------------------
     @timer(operation='monthly_revenue_by_customer')
-    def monthly_revenue_by_customer(self, months_to_check=6):
+    def monthly_revenue_by_customer(self, months_to_check: int = 6) -> Dict[str, Any]:
         """
         Returns a dictionary with revenue per customer per month and monthly decline info.
         """
@@ -1117,66 +1167,10 @@ class AnalyticsAgent:
             raise
 
     # -----------------------------
-    # Helper methods
+    # Full monthly revenue per product
     # -----------------------------
-    def _is_declining_trend(self, trend_values):
-        """Check if trend is declining"""
-        if len(trend_values) < 2:
-            return False
-        return all(earlier >= later for earlier, later in zip(trend_values, trend_values[1:]))
-
-    # -----------------------------
-    # Run tool by name
-    # -----------------------------
-    @timer(operation='run_tool')
-    def run_tool(self, tool_name):
-        """Run tool by name with monitoring"""
-        tools = {
-            "compute_kpis": self.compute_kpis,
-            "revenue_by_customer": self.revenue_by_customer,
-            "revenue_by_product": self.revenue_by_product,
-            "revenue_by_region": self.revenue_by_region,
-            "monthly_revenue": self.monthly_revenue,
-            "monthly_profit": self.monthly_profit,
-            "monthly_growth": self.monthly_growth,
-            "total_units_sold": self.total_units_sold,
-            "revenue_per_unit": self.revenue_per_unit,
-            "revenue_by_payment_status": self.revenue_by_payment_status,
-            "detect_revenue_spikes": self.detect_revenue_spikes,
-            "forecast_revenue": self.forecast_revenue,
-            "forecast_revenue_with_explanation": self.forecast_revenue_with_explanation,
-            "forecast_with_confidence": self.forecast_with_confidence,
-            "forecast_ensemble": self.forecast_ensemble,
-            "detect_seasonality": self.detect_seasonality,
-            "generate_summary": self.generate_summary,
-            "monthly_revenue_by_customer": self.monthly_revenue_by_customer,
-            "monthly_revenue_by_product": self.monthly_revenue_by_product,
-            "monthly_revenue_by_product_full": self.monthly_revenue_by_product_full,
-            "forecast_revenue_by_product": self.forecast_revenue_by_product 
-            
-        }
-
-        if tool_name not in tools:
-            error_msg = f"Unknown tool: {tool_name}"
-            self.audit_logger.log_action(
-                action_type='run_tool_error',
-                agent='analytics',
-                details={'error': error_msg, 'tool': tool_name},
-                session_id=self.session_id
-            )
-            raise ValueError(error_msg)
-
-        self.audit_logger.log_action(
-            action_type='run_tool',
-            agent='analytics',
-            details={'tool': tool_name},
-            session_id=self.session_id
-        )
-
-        return tools[tool_name]()
-    
     @timer(operation='monthly_revenue_by_product_full')
-    def monthly_revenue_by_product_full(self):
+    def monthly_revenue_by_product_full(self) -> pd.DataFrame:
         """
         Get full monthly revenue per product (not just last 6 months)
         Returns DataFrame with product, month, revenue
@@ -1215,10 +1209,13 @@ class AnalyticsAgent:
             )
             return pd.DataFrame()
 
+    # -----------------------------
+    # Forecast revenue by product
+    # -----------------------------
     @timer(operation='forecast_revenue_by_product')
-    def forecast_revenue_by_product(self, steps=3, period_label=None):
+    def forecast_revenue_by_product(self, steps: int = 3, period_label: Optional[str] = None) -> Dict[str, Any]:
         """
-        Forecast revenue for each product individually
+        Forecast revenue for each product individually.
         
         Args:
             steps: Number of months to forecast (default 3 for quarter)
@@ -1238,13 +1235,12 @@ class AnalyticsAgent:
             
             # Calculate the forecast period label if not provided
             if period_label is None:
-                from datetime import datetime
                 # Get the last date from the data to determine the forecast period
                 if 'date' in self.df.columns:
                     last_date = pd.to_datetime(self.df['date']).max()
                     # Calculate next quarter from last data point
                     next_month = last_date + pd.DateOffset(months=1)
-                    next_quarter_end = next_month + pd.DateOffset(months=steps-1)
+                    next_quarter_end = next_month + pd.DateOffset(months=steps - 1)
                     
                     # Format based on steps
                     if steps == 3:
@@ -1268,7 +1264,6 @@ class AnalyticsAgent:
             products = product_data["product"].unique()
             
             # Create future dates for the forecast period
-            from datetime import datetime
             if 'date' in self.df.columns:
                 last_date = pd.to_datetime(self.df['date']).max()
             else:
@@ -1295,7 +1290,7 @@ class AnalyticsAgent:
                 
                 print(f"📊 Product {product}: {len(monthly)} months of data")
                 
-                # REDUCED REQUIREMENT: Need at least 3 months instead of 6
+                # Need at least 3 months
                 if len(monthly) < 3:
                     forecasts[product] = {
                         "forecast": None,
@@ -1342,7 +1337,7 @@ class AnalyticsAgent:
                     else:
                         # Handle zeros (some products may have no sales in certain months)
                         if (monthly == 0).any():
-                            print(f"⚠️ {product} has { (monthly == 0).sum() } zero months, using moving average")
+                            print(f"⚠️ {product} has {(monthly == 0).sum()} zero months, using moving average")
                             ma = monthly.rolling(window=3, min_periods=1).mean()
                             forecast = ma.iloc[-1] * np.ones(steps)
                             forecast_sum = forecast.sum()
@@ -1419,3 +1414,52 @@ class AnalyticsAgent:
                 "error": str(e),
                 "forecasts": {}
             }
+
+    # -----------------------------
+    # Run tool by name
+    # -----------------------------
+    @timer(operation='run_tool')
+    def run_tool(self, tool_name: str) -> Any:
+        """Run tool by name with monitoring."""
+        tools = {
+            "compute_kpis": self.compute_kpis,
+            "revenue_by_customer": self.revenue_by_customer,
+            "revenue_by_product": self.revenue_by_product,
+            "revenue_by_region": self.revenue_by_region,
+            "monthly_revenue": self.monthly_revenue,
+            "monthly_profit": self.monthly_profit,
+            "monthly_growth": self.monthly_growth,
+            "total_units_sold": self.total_units_sold,
+            "revenue_per_unit": self.revenue_per_unit,
+            "revenue_by_payment_status": self.revenue_by_payment_status,
+            "detect_revenue_spikes": self.detect_revenue_spikes,
+            "forecast_revenue": self.forecast_revenue,
+            "forecast_revenue_with_explanation": self.forecast_revenue_with_explanation,
+            "forecast_with_confidence": self.forecast_with_confidence,
+            "forecast_ensemble": self.forecast_ensemble,
+            "detect_seasonality": self.detect_seasonality,
+            "generate_summary": self.generate_summary,
+            "monthly_revenue_by_customer": self.monthly_revenue_by_customer,
+            "monthly_revenue_by_product": self.monthly_revenue_by_product,
+            "monthly_revenue_by_product_full": self.monthly_revenue_by_product_full,
+            "forecast_revenue_by_product": self.forecast_revenue_by_product,
+        }
+
+        if tool_name not in tools:
+            error_msg = f"Unknown tool: {tool_name}"
+            self.audit_logger.log_action(
+                action_type='run_tool_error',
+                agent='analytics',
+                details={'error': error_msg, 'tool': tool_name},
+                session_id=self.session_id
+            )
+            raise ValueError(error_msg)
+
+        self.audit_logger.log_action(
+            action_type='run_tool',
+            agent='analytics',
+            details={'tool': tool_name},
+            session_id=self.session_id
+        )
+
+        return tools[tool_name]()

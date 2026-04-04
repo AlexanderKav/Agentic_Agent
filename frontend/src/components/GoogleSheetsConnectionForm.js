@@ -10,7 +10,8 @@ import {
   CircularProgress,
   Link,
   InputAdornment,
-  Divider
+  Divider,
+  FormHelperText
 } from '@mui/material';
 import {
   Google as GoogleIcon,
@@ -40,6 +41,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
   const [validationError, setValidationError] = useState(null);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
   const [permissionWarning, setPermissionWarning] = useState(null);
+  const [sheetNameError, setSheetNameError] = useState(null);
 
   const validateSheetId = (id) => {
     const regex = /^[a-zA-Z0-9-_]+$/;
@@ -51,6 +53,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
     setConfig({ ...config, [field]: value });
     setValidationError(null);
     setPermissionWarning(null);
+    setSheetNameError(null);
     if (connectionSuccess) {
       setConnectionSuccess(false);
       setTestResult(null);
@@ -58,8 +61,15 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
   };
 
   const handleTestConnection = async () => {
+    // Validate sheet_id
     if (!config.sheet_id) {
       setValidationError('Sheet ID is required');
+      return;
+    }
+
+    // Validate sheet_name is provided
+    if (!config.sheet_name || config.sheet_name.trim() === '') {
+      setSheetNameError('Sheet name is required. Please enter the exact name of the sheet/tab (e.g., "Sheet1", "Sales Data", etc.)');
       return;
     }
 
@@ -72,27 +82,35 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
     setTesting(true);
     setTestResult(null);
     setValidationError(null);
+    setSheetNameError(null);
     setPermissionWarning(null);
     
     try {
       const result = await onTestConnection({ 
         ...config, 
-        sheet_id: extractedId 
+        sheet_id: extractedId,
+        sheet_name: config.sheet_name.trim()
       });
       
-      if (result && result.success) {
+      console.log('Full response from parent:', result);
+      
+      // Check for success using the correct backend response structure
+      if (result && result.status === 'success') {
         let successMessage = '✅ Successfully connected!';
         let warning = null;
         
-        if (result.data?.message) {
-          successMessage = result.data.message;
-        } else if (result.data?.rows) {
-          successMessage = `✅ Connected! Found ${result.data.rows} rows.`;
+        // Use result.message directly (backend sends this)
+        if (result.message) {
+          successMessage = result.message;
+        } else if (result.rows_preview !== undefined) {
+          successMessage = `✅ Connected to sheet "${config.sheet_name}"! Found ${result.rows_preview} rows with ${result.columns?.length || 0} columns.`;
+        } else if (result.rows) {
+          successMessage = `✅ Connected to sheet "${config.sheet_name}"! Found ${result.rows} rows.`;
         }
         
         // Check for permission warning
-        if (result.data?.warning) {
-          warning = result.data.warning;
+        if (result.warning) {
+          warning = result.warning;
           setPermissionWarning(warning);
         }
         
@@ -102,10 +120,32 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
         });
         setConnectionSuccess(true);
         
-        // Pass the config to parent with success flag
-        onConnect({ ...config, sheet_id: extractedId }, true);
+        // Pass the config to parent with success flag and sheet info
+        onConnect({ 
+          ...config, 
+          sheet_id: extractedId,
+          sheet_name: config.sheet_name.trim(),
+          rows: result.rows_preview || result.rows,
+          columns: result.columns,
+          preview: result.preview
+        }, true);
+        
+      } else if (result && result.status === 'warning') {
+        // Handle warning case (connected but something's off)
+        setTestResult({ 
+          success: true, 
+          message: result.message || `Connected to sheet "${config.sheet_name}" with warnings`
+        });
+        setConnectionSuccess(true);
+        onConnect({ ...config, sheet_id: extractedId, sheet_name: config.sheet_name.trim() }, true);
+        
+      } else if (result && result.status === 'error') {
+        // Handle error from backend
+        throw new Error(result.message || result.detail || 'Connection failed');
+        
       } else {
-        throw new Error('Connection failed');
+        // Handle unexpected response format
+        throw new Error('Invalid response from server');
       }
       
     } catch (error) {
@@ -113,6 +153,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
       
       let errorMessage = '❌ Connection failed';
       
+      // Extract error message from various possible sources
       if (error.response?.data?.detail) {
         const detail = error.response.data.detail;
         
@@ -127,21 +168,27 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
             errorMessage = JSON.stringify(detail);
           }
         }
-        
-        // Make error messages more user-friendly
-        if (errorMessage.includes('404')) {
-          errorMessage = '❌ Sheet not found. Check the Sheet ID and sharing settings.';
-        } else if (errorMessage.includes('403')) {
-          errorMessage = '❌ Permission denied. Make sure the sheet is shared with the service account email below.';
-        } else if (errorMessage.includes('date')) {
-          errorMessage = '❌ Schema validation failed: Date column contains invalid formats.';
-        } else if (errorMessage.includes('revenue')) {
-          errorMessage = '❌ Schema validation failed: Revenue column contains non-numeric values.';
-        } else if (errorMessage.includes('Missing required columns')) {
-          errorMessage = '❌ Missing required columns. Your sheet must contain "date" and "revenue" columns.';
-        }
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
       } else if (error.message) {
         errorMessage = error.message;
+      }
+      
+      // Make error messages more user-friendly
+      if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+        errorMessage = '❌ Sheet not found. Check the Sheet ID and sharing settings.';
+      } else if (errorMessage.includes('403') || errorMessage.includes('permission') || errorMessage.includes('access')) {
+        errorMessage = `❌ Permission denied. Make sure the sheet is shared with:\n${SERVICE_ACCOUNT_EMAIL}`;
+      } else if (errorMessage.includes('date') && errorMessage.includes('invalid')) {
+        errorMessage = '❌ Schema validation failed: Date column contains invalid formats. Make sure dates are in a recognized format (e.g., YYYY-MM-DD).';
+      } else if (errorMessage.includes('revenue') && errorMessage.includes('non-numeric')) {
+        errorMessage = '❌ Schema validation failed: Revenue column contains non-numeric values. Make sure revenue values are numbers.';
+      } else if (errorMessage.includes('Missing required columns')) {
+        errorMessage = '❌ Missing required columns. Your sheet must contain "date" and "revenue" columns (case-insensitive).';
+      } else if (errorMessage.includes('empty') || errorMessage.includes('no data')) {
+        errorMessage = '❌ The sheet appears to be empty. Please check that your sheet contains data.';
+      } else if (errorMessage.includes('sheet name') || errorMessage.includes('Sheet name')) {
+        errorMessage = `❌ Sheet "${config.sheet_name}" not found. Please check the exact sheet/tab name.`;
       }
       
       setTestResult({ 
@@ -161,6 +208,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
     setTestResult(null);
     setValidationError(null);
     setPermissionWarning(null);
+    setSheetNameError(null);
     setConfig({ 
       sheet_id: '', 
       sheet_range: 'A1:Z1000',
@@ -238,7 +286,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
             helperText="Paste the full URL or just the Sheet ID"
             required
             disabled={connectionSuccess}
-            error={validationError?.includes('Sheet ID')}
+            error={!!validationError?.includes('Sheet ID')}
             InputProps={{
               endAdornment: connectionSuccess && (
                 <InputAdornment position="end">
@@ -249,27 +297,40 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
           />
         </Grid>
 
-        {/* Optional Settings */}
-        <Grid item xs={12} sm={6}>
+        {/* Sheet Name Input - NOW REQUIRED */}
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            label="Sheet/Tab Name"
+            value={config.sheet_name}
+            onChange={handleChange('sheet_name')}
+            placeholder="e.g., Sheet1, Sales Data, Q1 2024"
+            helperText="Enter the exact name of the sheet/tab in your Google Sheet (case-sensitive)"
+            required
+            disabled={connectionSuccess}
+            error={!!sheetNameError}
+            InputProps={{
+              endAdornment: connectionSuccess && (
+                <InputAdornment position="end">
+                  <CheckCircleIcon color="success" />
+                </InputAdornment>
+              )
+            }}
+          />
+          {sheetNameError && !connectionSuccess && (
+            <FormHelperText error>{sheetNameError}</FormHelperText>
+          )}
+        </Grid>
+
+        {/* Sheet Range Input (still optional) */}
+        <Grid item xs={12}>
           <TextField
             fullWidth
             label="Sheet Range (optional)"
             value={config.sheet_range}
             onChange={handleChange('sheet_range')}
             placeholder="A1:Z1000"
-            helperText="Default: A1:Z1000"
-            disabled={connectionSuccess}
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6}>
-          <TextField
-            fullWidth
-            label="Specific Sheet Name (optional)"
-            value={config.sheet_name}
-            onChange={handleChange('sheet_name')}
-            placeholder="Sheet1"
-            helperText="Leave empty for first sheet"
+            helperText="Default: A1:Z1000. Only change if you need a specific range."
             disabled={connectionSuccess}
           />
         </Grid>
@@ -307,7 +368,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
               <Button
                 variant="contained"
                 onClick={handleTestConnection}
-                disabled={testing || !config.sheet_id}
+                disabled={testing || !config.sheet_id || !config.sheet_name}
                 startIcon={testing ? <CircularProgress size={20} /> : <RefreshIcon />}
               >
                 {testing ? 'Testing...' : 'Test Connection'}
@@ -319,19 +380,29 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
         {/* Test Result Message */}
         {testResult && (
           <Grid item xs={12}>
-            <Alert severity={testResult.success ? 'success' : 'error'}>
+            <Alert 
+              severity={testResult.success ? 'success' : 'error'}
+              sx={{ whiteSpace: 'pre-line' }}
+            >
               {testResult.message}
             </Alert>
           </Grid>
         )}
 
-        {/* Reset Connection Link - Only shown after successful connection */}
+        {/* ✅ "CONNECT TO DIFFERENT SHEET" BUTTON - Shows after successful connection */}
         {connectionSuccess && (
           <Grid item xs={12} sx={{ textAlign: 'center', mt: 2 }}>
             <Link
               component="button"
               variant="body2"
               onClick={handleReset}
+              sx={{ 
+                cursor: 'pointer',
+                textDecoration: 'none',
+                '&:hover': {
+                  textDecoration: 'underline'
+                }
+              }}
             >
               ← Connect to a different sheet
             </Link>
@@ -349,6 +420,7 @@ const GoogleSheetsConnectionForm = ({ onConnect, onTestConnection, onClearResult
               <Typography variant="body2" component="div">
                 <ul style={{ margin: 0, paddingLeft: 20 }}>
                   <li>Sheet must be shared with <strong>{SERVICE_ACCOUNT_EMAIL}</strong> as a viewer</li>
+                  <li><strong>Sheet/Tab Name is REQUIRED</strong> - enter the exact name of the sheet (case-sensitive)</li>
                   <li>Maximum {MAX_SHEET_SIZE.toLocaleString()} rows will be processed</li>
                   <li>First row must contain column headers</li>
                   <li><strong>Required columns:</strong> date and revenue (case-insensitive)</li>

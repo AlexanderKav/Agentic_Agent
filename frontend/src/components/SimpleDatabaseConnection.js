@@ -37,12 +37,13 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
   const [dbType, setDbType] = useState('postgresql');
+  // ✅ UPDATED: Empty config instead of pre-filled values
   const [config, setConfig] = useState({
-    host: 'localhost',
-    port: '5433',
-    database: 'sales_db',
-    username: 'analyst_user',
-    password: 'analyst_pass123',
+    host: '',
+    port: '',
+    database: '',
+    username: '',
+    password: '',
     table: ''
   });
   
@@ -150,12 +151,15 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
   const handleDbTypeChange = (event) => {
     const newType = event.target.value;
     setDbType(newType);
-    const defaultPort = newType === 'postgresql' ? '5433' : '3307';
-    setConfig(prev => ({ 
-      ...prev, 
-      port: defaultPort,
+    // ✅ UPDATED: Clear config when switching database types
+    setConfig({ 
+      host: '',
+      port: '',
+      database: '',
+      username: '',
+      password: '',
       table: ''
-    }));
+    });
     // Reset SQLite state when switching away from SQLite
     if (newType !== 'sqlite') {
       setSqliteFile(null);
@@ -175,14 +179,14 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
   };
 
   const handleReset = () => {
-    // Reset all form fields
+    // ✅ UPDATED: Reset all form fields to empty
     setDbType('postgresql');
     setConfig({
-      host: 'localhost',
-      port: '5433',
-      database: 'sales_db',
-      username: 'analyst_user',
-      password: 'analyst_pass123',
+      host: '',
+      port: '',
+      database: '',
+      username: '',
+      password: '',
       table: ''
     });
     setSqliteFile(null);
@@ -272,7 +276,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
         const testConfig = {
           db_type: dbType,
           host: config.host,
-          port: config.port || (dbType === 'postgresql' ? '5433' : '3307'),
+          port: config.port || (dbType === 'postgresql' ? '5432' : '3306'),
           database: config.database,
           username: config.username,
           password: config.password,
@@ -300,7 +304,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
     }
   };
 
-  const getDefaultPort = () => dbType === 'postgresql' ? '5433' : '3307';
+  const getDefaultPortHint = () => dbType === 'postgresql' ? 'e.g., 5432' : 'e.g., 3306';
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -441,7 +445,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
                 label="Host"
                 value={config.host}
                 onChange={handleChange('host')}
-                placeholder="db.your-company.com or localhost"
+                placeholder="e.g., localhost or db.your-company.com"
                 disabled={connectionSuccess}
                 required
               />
@@ -453,7 +457,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
                 label="Port"
                 value={config.port}
                 onChange={handleChange('port')}
-                placeholder={getDefaultPort()}
+                placeholder={getDefaultPortHint()}
                 disabled={connectionSuccess}
               />
             </Grid>
@@ -464,7 +468,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
                 label="Database Name"
                 value={config.database}
                 onChange={handleChange('database')}
-                placeholder="sales_db"
+                placeholder="e.g., sales_db"
                 disabled={connectionSuccess}
                 required
               />
@@ -476,7 +480,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
                 label="Username"
                 value={config.username}
                 onChange={handleChange('username')}
-                placeholder="postgres"
+                placeholder="e.g., postgres or root"
                 disabled={connectionSuccess}
                 required
               />
@@ -489,6 +493,7 @@ const SimpleDatabaseConnection = ({ onConnect, onClearResults }) => {
                 label="Password"
                 value={config.password}
                 onChange={handleChange('password')}
+                placeholder="Enter your database password"
                 disabled={connectionSuccess}
                 InputProps={{
                   endAdornment: (

@@ -1,0 +1,67 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install security tools
+      run: |
+        pip install bandit safety pip-audit
+        npm install -g snyk
+    
+    - name: Run Bandit security linter
+      run: bandit -r agents/ app/ -f json -o bandit-report.json || true
+    
+    - name: Run Safety check
+      run: safety check --json --output safety-report.json || true
+    
+    - name: Run pip-audit
+      run: pip-audit --requirement requirements.txt --format json --output pip-audit-report.json || true
+    
+    - name: Run OWASP Dependency Check (Node.js)
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: 'agentic-analyst'
+        path: '.'
+        format: 'HTML'
+        out: 'reports'
+        args: >
+          --enableExperimental
+          --failOnCVSS 7
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+          pip-audit-report.json
+          reports/
+        retention-days: 90
+    
+    - name: Check for critical vulnerabilities
+      run: |
+        # Fail if critical vulnerabilities found
+        if grep -q '"severity": "CRITICAL"' bandit-report.json; then
+          echo "❌ Critical security issues found!"
+          exit 1
+        else
+          echo "✅ No critical vulnerabilities found"
+        fi

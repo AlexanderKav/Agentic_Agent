@@ -1,11 +1,12 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-import os
 import json
-from typing import Dict, Any, Optional
 import logging
+import os
+import smtplib
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Any
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -20,25 +21,25 @@ class EmailService:
         self.smtp_user = os.getenv("SMTP_USER")
         self.smtp_password = os.getenv("SMTP_PASSWORD")
         self.from_email = os.getenv("FROM_EMAIL", self.smtp_user)
-        
+
         print(f"📧 Email service initialized with: {self.smtp_host}:{self.smtp_port}")
         print(f"📧 From: {self.from_email}")
-    
+
     async def _send_email(self, to_email: str, subject: str, html_content: str) -> tuple:
         """Internal method to send emails"""
         try:
             print(f"📧 Preparing to send email to {to_email}")
             print(f"📧 Subject: {subject}")
-            
+
             # Create message
             msg = MIMEMultipart()
             msg["From"] = self.from_email
             msg["To"] = to_email
             msg["Subject"] = subject
-            
+
             # Attach HTML content
             msg.attach(MIMEText(html_content, "html"))
-            
+
             # Connect to SMTP server
             print(f"📧 Connecting to {self.smtp_host}:{self.smtp_port}...")
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
@@ -48,24 +49,24 @@ class EmailService:
                 print("📧 Login successful")
                 server.send_message(msg)
                 print(f"✅ Email sent successfully to {to_email}")
-            
+
             return True, "Email sent successfully"
-            
+
         except Exception as e:
             error_msg = f"Failed to send email: {str(e)}"
             print(f"❌ {error_msg}")
             import traceback
             traceback.print_exc()
             return False, error_msg
-    
+
     async def send_verification_email(self, to_email: str, username: str, token: str):
         """Send email verification link"""
         # Point to the frontend success page that will handle the verification
         verification_link = f"http://localhost:3000/verification-success?token={token}"
-        
+
         print(f"📧 Sending verification email to {to_email}")
         print(f"🔗 Verification link: {verification_link}")
-        
+
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -176,22 +177,22 @@ class EmailService:
         </body>
         </html>
         """
-        
+
         return await self._send_email(to_email, "Verify Your Email - Agentic Analyst", html)
-    
-    async def send_analysis_results(self, to_email: str, question: str, results: Dict[str, Any], 
-                                    charts: Optional[Dict[str, str]] = None):
+
+    async def send_analysis_results(self, to_email: str, question: str, results: dict[str, Any],
+                                    charts: dict[str, str] | None = None):
         """Send analysis results via email"""
         subject = f"📊 Agentic Analyst Results: {question[:50]}..."
-        
+
         # Extract insights - handle different data structures
         insights = results.get("insights", "No insights available")
         if isinstance(insights, dict):
             insights = insights.get("human_readable_summary") or insights.get("answer") or str(insights)
-        
+
         # Get KPIs - try multiple locations
         kpis = {}
-        
+
         # Try results.results.kpis
         if results.get("results", {}).get("kpis"):
             kpis = results["results"]["kpis"]
@@ -203,7 +204,7 @@ class EmailService:
             for key in ['total_revenue', 'profit_margin', 'total_profit', 'avg_order_value']:
                 if key in results:
                     kpis[key] = results[key]
-        
+
         # Get data summary
         data_summary = results.get("data_summary", {})
         if not data_summary and results.get("results", {}).get("data_summary"):
@@ -302,11 +303,11 @@ class EmailService:
                         <p>{insights}</p>
                     </div>
         """
-        
+
         # Add KPIs if available
         if kpis:
             html += '<h3>📊 Key Performance Indicators</h3><div class="kpi-grid">'
-            
+
             for key, value in kpis.items():
                 if isinstance(value, (int, float)):
                     if "revenue" in key or "profit" in key or "cost" in key:
@@ -317,7 +318,7 @@ class EmailService:
                         formatted = f"{value:,.0f}"
                 else:
                     formatted = str(value)
-                
+
                 html += f"""
                     <div class="kpi-card">
                         <div style="font-size: 14px; color: #666;">{key.replace('_', ' ').title()}</div>
@@ -325,7 +326,7 @@ class EmailService:
                     </div>
                 """
             html += "</div>"
-        
+
         # Add data summary
         data_summary = results.get("data_summary", {})
         if data_summary:
@@ -336,7 +337,7 @@ class EmailService:
                     Columns: {len(data_summary.get('columns', []))}
                 </div>
             """
-        
+
         html += """
                     <p style="margin-top: 30px; padding: 15px; background: #e8f5e8; border-radius: 5px;">
                         📎 A JSON file with complete analysis results is attached to this email.
@@ -351,23 +352,23 @@ class EmailService:
         </body>
         </html>
         """
-        
+
         # Create message with attachments
         try:
             msg = MIMEMultipart()
             msg["From"] = self.from_email
             msg["To"] = to_email
             msg["Subject"] = subject
-            
+
             # Attach HTML content
             msg.attach(MIMEText(html, "html"))
-            
+
             # Attach JSON results
             json_str = json.dumps(results, indent=2, default=str)
             json_attachment = MIMEApplication(json_str.encode("utf-8"), Name="analysis_results.json")
             json_attachment["Content-Disposition"] = 'attachment; filename="analysis_results.json"'
             msg.attach(json_attachment)
-            
+
             # Attach charts if available
             if charts:
                 for name, path in charts.items():
@@ -378,17 +379,17 @@ class EmailService:
                             attachment["Content-Disposition"] = f'attachment; filename="{name}.png"'
                             msg.attach(attachment)
                             print(f"📎 Attached chart: {name}.png")
-            
+
             # Send email
             print(f"📧 Sending analysis results to {to_email}")
             with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.starttls()
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
-            
+
             print(f"✅ Analysis results sent successfully to {to_email}")
             return True, "Email sent successfully"
-            
+
         except Exception as e:
             error_msg = f"Failed to send analysis email: {str(e)}"
             print(f"❌ {error_msg}")
@@ -403,7 +404,7 @@ class EmailService:
     async def send_password_reset_email(self, to_email: str, username: str, token: str):
         """Send password reset email"""
         reset_link = f"http://localhost:3000/reset-password?token={token}"
-        
+
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -509,5 +510,11 @@ class EmailService:
         </body>
         </html>
         """
-        
+
         return await self._send_email(to_email, "Reset Your Password - Agentic Analyst", html)
+
+
+__all__ = ['ABTestService']  # For ab_testing.py
+__all__ = ['EmailService']   # For email.py
+__all__ = ['KeyRotationService', 'get_key_rotation_service']  # For key_rotation.py
+__all__ = ['SecretsManager', 'get_secrets_manager']  # For secrets_manager.py

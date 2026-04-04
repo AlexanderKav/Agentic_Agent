@@ -28,14 +28,11 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import ChartViewer from './ChartViewer';
 import DynamicDataRenderer from './DynamicDataRenderer';
 
-
-
 const ResultsDisplay = ({ results, userQuestion }) => {
   const [expandedWarnings, setExpandedWarnings] = useState(false);
   
   if (!results) return null;
   console.log("🎯 ResultsDisplay received:", results);
-  console.log("🎯 User question:", userQuestion);
 
   // Extract all possible fields
   const { 
@@ -49,63 +46,56 @@ const ResultsDisplay = ({ results, userQuestion }) => {
     raw_insights
   } = results;
   
-  // Extract charts from analysisResults if they exist
+  // Extract charts
   const charts = analysisResults?.charts || results?.charts || null;
   
   // Determine if this is a general overview
   const isOverview = is_generic_overview || !userQuestion || userQuestion.trim() === '';
   
-  // Parse insights - it could be a string or an object
-  let answerText = '';
-  let summaryText = '';
-  let supportingInsights = {};
-  let anomalies = {};
-  let recommendedMetrics = {};
+  // Parse insights - extract structured data
+  let structuredData = null;
   
-  // Helper function to safely get string from object
-  const getSafeString = (value, defaultValue = '') => {
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number') return value.toString();
-    if (value && typeof value === 'object') {
-      if (value.answer && typeof value.answer === 'string') return value.answer;
-      if (value.human_readable_summary && typeof value.human_readable_summary === 'string') return value.human_readable_summary;
-      try {
-        return JSON.stringify(value);
-      } catch {
-        return defaultValue;
-      }
+  // Helper to extract structured insights
+  const extractStructuredData = (data) => {
+    if (!data) return null;
+    
+    if (data.human_readable_summary || data.supporting_insights || data.anomalies || data.recommended_metrics) {
+      return data;
     }
-    return defaultValue;
+    
+    if (data.answer && (data.supporting_insights || data.anomalies)) {
+      return data;
+    }
+    
+    if (data.insights && typeof data.insights === 'object') {
+      return data.insights;
+    }
+    
+    return null;
   };
   
-  if (typeof insights === 'string') {
-    // If insights is a string, use it as the answer
-    answerText = insights;
-    summaryText = insights;
-  } else if (insights && typeof insights === 'object') {
-    // If insights is an object, extract its fields
-    answerText = getSafeString(insights.answer);
-    summaryText = getSafeString(insights.human_readable_summary);
-    supportingInsights = insights.supporting_insights || {};
-    anomalies = insights.anomalies || {};
-    recommendedMetrics = insights.recommended_metrics || {};
+  // Try to get structured data from various sources
+  structuredData = extractStructuredData(insights);
+  if (!structuredData && raw_insights) {
+    structuredData = extractStructuredData(raw_insights);
   }
   
-  // Also check raw_insights if insights is empty
-  if ((!answerText || answerText === '') && raw_insights) {
-    if (typeof raw_insights === 'object') {
-      answerText = getSafeString(raw_insights.answer);
-      summaryText = getSafeString(raw_insights.human_readable_summary);
-      supportingInsights = raw_insights.supporting_insights || supportingInsights;
-      anomalies = raw_insights.anomalies || anomalies;
-      recommendedMetrics = raw_insights.recommended_metrics || recommendedMetrics;
-    } else if (typeof raw_insights === 'string') {
-      answerText = raw_insights;
-      summaryText = raw_insights;
-    }
+  // For the DynamicDataRenderer, we want to pass the ENTIRE structured object
+  const hasStructuredResponse = structuredData !== null;
+  
+  // Extract answer for fallback only
+  let answerText = '';
+  if (structuredData?.answer && typeof structuredData.answer === 'string') {
+    answerText = structuredData.answer;
+  } else if (structuredData?.human_readable_summary && typeof structuredData.human_readable_summary === 'string') {
+    answerText = structuredData.human_readable_summary;
+  } else if (typeof insights === 'string') {
+    answerText = insights;
+  } else if (typeof raw_insights === 'string') {
+    answerText = raw_insights;
   }
 
-  // Process warnings to identify column drop warnings
+  // Process warnings
   const columnDropWarnings = [];
   const otherWarnings = [];
   
@@ -113,7 +103,7 @@ const ResultsDisplay = ({ results, userQuestion }) => {
     warnings.forEach(warning => {
       if (warning.includes('columns not mapped') || 
           warning.includes('Columns not mapped') ||
-          warning.includes('Dropped') && warning.includes('unmapped columns')) {
+          (warning.includes('Dropped') && warning.includes('unmapped columns'))) {
         columnDropWarnings.push(warning);
       } else {
         otherWarnings.push(warning);
@@ -123,7 +113,7 @@ const ResultsDisplay = ({ results, userQuestion }) => {
 
   return (
     <Paper sx={{ p: 3 }}>
-      {/* Header with Context */}
+      {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <Avatar sx={{ 
           bgcolor: isOverview ? '#2e7d32' : '#1976d2', 
@@ -137,20 +127,15 @@ const ResultsDisplay = ({ results, userQuestion }) => {
           <Typography variant="h5">
             {isOverview ? '📊 Business Dashboard' : '🔍 Analysis Results'}
           </Typography>
-          {!isOverview && (
+          {!isOverview && userQuestion && (
             <Typography variant="body1" color="textSecondary" sx={{ mt: 1 }}>
               Question: "{userQuestion}"
-            </Typography>
-          )}
-          {isOverview && (
-            <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
-              Complete overview of your business performance
             </Typography>
           )}
         </Box>
       </Box>
 
-      {/* Column Drop Warnings - Collapsible */}
+      {/* Column Drop Warnings */}
       {columnDropWarnings.length > 0 && (
         <Box sx={{ mb: 2 }}>
           <Alert 
@@ -161,50 +146,30 @@ const ResultsDisplay = ({ results, userQuestion }) => {
                 aria-label="expand"
                 size="small"
                 onClick={() => setExpandedWarnings(!expandedWarnings)}
-                sx={{ mt: -0.5 }}
               >
                 {expandedWarnings ? <ExpandLessIcon /> : <ExpandMoreIcon />}
               </IconButton>
             }
-            sx={{ 
-              backgroundColor: '#e3f2fd',
-              '& .MuiAlert-message': { width: '100%' }
-            }}
+            sx={{ backgroundColor: '#e3f2fd' }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-              <Typography variant="body2">
-                <strong>📋 Column Notice:</strong> Some columns were not recognized and were dropped
-              </Typography>
-              <Tooltip title={expandedWarnings ? "Hide details" : "Show details"}>
-                <Typography variant="caption" sx={{ ml: 2, color: '#1976d2', fontWeight: 'bold', cursor: 'pointer' }}>
-                  {expandedWarnings ? '▼' : '▶'} {columnDropWarnings.length} warning(s)
-                </Typography>
-              </Tooltip>
-            </Box>
+            <Typography variant="body2">
+              <strong>📋 Column Notice:</strong> {columnDropWarnings.length} column(s) were not recognized
+            </Typography>
           </Alert>
           
           <Collapse in={expandedWarnings}>
-            <Box sx={{ 
-              mt: 1, 
-              p: 2, 
-              bgcolor: '#f5f5f5', 
-              borderRadius: 1,
-              borderLeft: '4px solid #1976d2'
-            }}>
+            <Box sx={{ mt: 1, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
               {columnDropWarnings.map((warning, idx) => (
                 <Typography key={idx} variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.85rem', mb: 0.5 }}>
                   • {warning}
                 </Typography>
               ))}
-              <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block', fontStyle: 'italic' }}>
-                Only standard columns (date, revenue, customer, product, region, cost, currency, quantity, payment_status, notes) are used in analysis. All other columns are automatically dropped.
-              </Typography>
             </Box>
           </Collapse>
         </Box>
       )}
 
-      {/* Other Warnings (non-column related) */}
+      {/* Other Warnings */}
       {otherWarnings.length > 0 && (
         <Box sx={{ mb: 2 }}>
           {otherWarnings.map((warning, idx) => (
@@ -220,45 +185,31 @@ const ResultsDisplay = ({ results, userQuestion }) => {
         <Grid item xs={6} md={3}>
           <Card variant="outlined">
             <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Rows Processed
-              </Typography>
-              <Typography variant="h5">
-                {data_summary?.rows?.toLocaleString() || 0}
-              </Typography>
+              <Typography color="textSecondary" gutterBottom>Rows Processed</Typography>
+              <Typography variant="h5">{data_summary?.rows?.toLocaleString() || 0}</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={6} md={3}>
           <Card variant="outlined">
             <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Columns
-              </Typography>
-              <Typography variant="h5">
-                {data_summary?.columns?.length || 0}
-              </Typography>
+              <Typography color="textSecondary" gutterBottom>Columns</Typography>
+              <Typography variant="h5">{data_summary?.columns?.length || 0}</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={6} md={3}>
           <Card variant="outlined">
             <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Execution Time
-              </Typography>
-              <Typography variant="h5">
-                {execution_time?.toFixed(2)}s
-              </Typography>
+              <Typography color="textSecondary" gutterBottom>Execution Time</Typography>
+              <Typography variant="h5">{execution_time?.toFixed(2)}s</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={6} md={3}>
           <Card variant="outlined">
             <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Analysis Type
-              </Typography>
+              <Typography color="textSecondary" gutterBottom>Analysis Type</Typography>
               <Chip
                 icon={isOverview ? <DashboardIcon /> : <QuestionAnswerIcon />}
                 label={isOverview ? "Dashboard" : "Q&A"}
@@ -272,86 +223,25 @@ const ResultsDisplay = ({ results, userQuestion }) => {
 
       <Divider sx={{ my: 2 }} />
 
-      {/* Charts Section */}
+      {/* Charts */}
       {charts && <ChartViewer charts={charts} />}
 
-      {/* Answer Section */}
-      {answerText && (
+      {/* ✅ CORRECTED: Use the static render method, not as a component */}
+      {hasStructuredResponse && (
+        <Box sx={{ mt: 3 }}>
+          {DynamicDataRenderer.render(structuredData)}
+        </Box>
+      )}
+
+      {/* Fallback for simple string answers */}
+      {!hasStructuredResponse && answerText && (
         <Box sx={{ 
           mt: 3, 
-          mb: 3, 
           p: 3, 
           bgcolor: isOverview ? '#f5f5f5' : '#e3f2fd',
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: isOverview ? '#ccc' : '#1976d2'
+          borderRadius: 2
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            {isOverview ? (
-              <TrendingUpIcon sx={{ color: '#2e7d32', mr: 1 }} />
-            ) : (
-              <QuestionAnswerIcon sx={{ color: '#1976d2', mr: 1 }} />
-            )}
-            <Typography variant="subtitle1" fontWeight="bold">
-              {isOverview ? 'Executive Summary' : 'Direct Answer'}
-            </Typography>
-          </Box>
-          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-            {answerText}
-          </Typography>
-        </Box>
-      )}
-
-      {/* Human Readable Summary (if different from answer) */}
-      {summaryText && summaryText !== answerText && (
-        <Box sx={{ 
-          mt: 3, 
-          mb: 3, 
-          p: 3, 
-          bgcolor: '#f0f7ff', 
-          borderRadius: 2,
-          border: '1px solid #1976d2'
-        }}>
-          <Typography variant="h6" gutterBottom sx={{ color: '#1976d2', display: 'flex', alignItems: 'center' }}>
-            <TipsAndUpdatesIcon sx={{ mr: 1 }} />
-            📋 Detailed Analysis
-          </Typography>
-          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-            {summaryText}
-          </Typography>
-        </Box>
-      )}
-
-      {/* Supporting Insights - Using Dynamic Renderer */}
-      {Object.keys(supportingInsights).length > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-            <AnalyticsIcon sx={{ mr: 1, color: '#1976d2' }} />
-            Supporting Insights
-          </Typography>
-          {DynamicDataRenderer.render(supportingInsights, "Key Metrics")}
-        </Box>
-      )}
-
-      {/* Anomalies - Using Dynamic Renderer */}
-      {Object.keys(anomalies).length > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom sx={{ color: '#d32f2f', display: 'flex', alignItems: 'center' }}>
-            <ReportProblemIcon sx={{ mr: 1 }} />
-            ⚠️ Anomalies Detected
-          </Typography>
-          {DynamicDataRenderer.render(anomalies, "Detected Anomalies")}
-        </Box>
-      )}
-
-      {/* Recommended Metrics - Using Dynamic Renderer */}
-      {Object.keys(recommendedMetrics).length > 0 && (
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="h6" gutterBottom sx={{ color: '#2e7d32', display: 'flex', alignItems: 'center' }}>
-            <TipsAndUpdatesIcon sx={{ mr: 1 }} />
-            📊 Recommended Next Steps
-          </Typography>
-          {DynamicDataRenderer.render(recommendedMetrics, "Recommendations")}
+          <Typography variant="body1">{answerText}</Typography>
         </Box>
       )}
 

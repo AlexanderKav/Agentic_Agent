@@ -1,23 +1,22 @@
 # app/main.py
-from fastapi import FastAPI, Request
+from datetime import datetime
+
+import uvicorn
+from dotenv import load_dotenv
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import uvicorn
-from datetime import datetime
-from dotenv import load_dotenv
-import os
 
 # Rate limiting imports
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from app.services.key_rotation import get_key_rotation_service
+from slowapi.util import get_remote_address
 
 # Import the routers correctly
-from app.api.v1.endpoints import analysis, monitoring
+from app.api.v1.endpoints import analysis, auth, email, monitoring
 from app.api.v1.models.responses import HealthResponse
+from app.services.key_rotation import get_key_rotation_service
 
-from app.api.v1.endpoints import auth, email
 load_dotenv()
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -56,21 +55,20 @@ app.include_router(monitoring.router)
 async def startup_event():
     """Run startup tasks"""
     # Create database tables
-    from app.core.database import engine, Base
-    from app.api.v1.models import User, AnalysisHistory, AnalysisMetric, AnalysisInsight, AnalysisChart
-    
+    from app.core.database import Base, engine
+
     print("🔧 Creating database tables if they don't exist...")
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables verified/created")
-    
+
     # Check key rotation on startup
     rotation_service = get_key_rotation_service()
     rotation_service.check_and_rotate_if_needed('SECRET_KEY')
     rotation_service.check_and_rotate_if_needed('AUDIT_SECRET_KEY')
-    
+
     # Enable database encryption extension (for PostgreSQL)
-    from app.core.encryption import get_db_encryption
     from app.core.database import SessionLocal
+    from app.core.encryption import get_db_encryption
     encryption = get_db_encryption()
     db = SessionLocal()
     try:

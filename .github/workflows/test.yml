@@ -2,9 +2,10 @@ name: Run Tests
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feature/* ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   test:
@@ -12,6 +13,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
+      fail-fast: false  # Continue even if one version fails
 
     steps:
     - uses: actions/checkout@v4
@@ -20,14 +22,124 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'  # Cache pip dependencies
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-xdist pytest-html pytest-benchmark
+        pip install pytest pytest-cov pytest-xdist pytest-html pytest-benchmark pytest-mock
     
-    - name: Run tests
+    - name: Run unit tests with coverage
       run: |
-        pytest tests/unit -v
-        pytest tests/integration -v
+        pytest tests/unit -v \
+          --cov=agents \
+          --cov=app \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term \
+          --numprocesses=auto \
+          --maxfail=5
+    
+    - name: Run integration tests (if they exist)
+      run: |
+        if [ -d "tests/integration" ]; then
+          pytest tests/integration -v --tb=short
+        else
+          echo "No integration tests found, skipping..."
+        fi
+      continue-on-error: false
+    
+    - name: Upload coverage report
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+    
+    - name: Store test results
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-python-${{ matrix.python-version }}
+        path: |
+          coverage.xml
+          htmlcov/
+          pytest.html
+        retention-days: 14
+    
+    - name: Run security linter
+      run: |
+        pip install bandit safety
+        bandit -r agents/ app/ -f json -o bandit-report.json || true
+        safety check --json > safety-report.json || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+        retention-days: 30
+
+  lint:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install linting tools
+      run: |
+        pip install ruff black mypy isort
+    
+    - name: Run Ruff linter
+      run: ruff check agents/ app/ --output-format=github
+    
+    - name: Run Black formatter check
+      run: black --check agents/ app/
+    
+    - name: Run isort import sorting check
+      run: isort --check-only agents/ app/
+    
+    - name: Run mypy type checking
+      run: mypy agents/ app/ --ignore-missing-imports || true
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install frontend dependencies
+      working-directory: frontend
+      run: npm ci
+    
+    - name: Run frontend tests
+      working-directory: frontend
+      run: npm test -- --watchAll=false --coverage
+    
+    - name: Build frontend
+      working-directory: frontend
+      run: npm run build

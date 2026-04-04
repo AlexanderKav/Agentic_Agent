@@ -1,24 +1,61 @@
+"""
+Visualization Agent - Generates charts from analysis results
+"""
+
 import os
-import pandas as pd
+from typing import Any, Dict, Optional
+
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import pandas as pd
+
+matplotlib.use("Agg")
 
 
 class VisualizationAgent:
+    """
+    Agent for generating charts and visualizations from analysis results.
+    
+    Supports:
+    - Time series line plots
+    - Bar charts for categorical data
+    - DataFrame line plots
+    - Product forecast bar charts
+    """
 
-    def __init__(self, output_dir="agents/charts"):
-
+    def __init__(self, output_dir: str = "agents/charts") -> None:
+        """Initialize visualization agent with output directory."""
         self.output_dir = os.path.abspath(output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
-
         print("Charts will be saved to:", self.output_dir)
+
+    def __del__(self) -> None:
+        """Clean up any open matplotlib figures."""
+        plt.close('all')
 
     # --------------------------------------------------
     # Generic Series Chart
     # --------------------------------------------------
-
-    def _plot_series(self, series, name):
+    def _plot_series(self, series: pd.Series, name: str) -> str:
+        """
+        Plot a pandas Series (time series or categorical).
+        
+        Args:
+            series: pandas Series with index as labels/dates and values as data
+            name: Name for the chart file and title
+            
+        Returns:
+            Path to the saved chart file
+            
+        Raises:
+            ValueError: If series is empty or contains only null values
+        """
+        if series.empty:
+            raise ValueError(f"Cannot plot empty series: {name}")
+        
+        if series.isnull().all():
+            raise ValueError(f"Series contains only null values: {name}")
+        
         series = series.copy()
 
         # Determine if it's time series or categorical
@@ -26,7 +63,7 @@ class VisualizationAgent:
         try:
             pd.to_datetime(series.index)
             is_time_series = True
-        except:
+        except (ValueError, TypeError):
             pass
 
         # Adjust figure size based on number of items
@@ -42,7 +79,7 @@ class VisualizationAgent:
 
         if is_time_series:
             # Time series - use line plot
-            plt.plot(series.index, series.values, marker="o")
+            plt.plot(series.index, series.values, marker="o", linewidth=2, markersize=6)
             plt.xlabel("Time")
             plt.xticks(rotation=45, ha='right')
         else:
@@ -52,84 +89,80 @@ class VisualizationAgent:
                 series = series.sort_values()
                 plt.barh(range(n_items), series.values)
                 plt.yticks(range(n_items), series.index, fontsize=8)
-                plt.ylabel("Customer")
+                plt.ylabel("Category")
             else:
                 # Few categories - use vertical bar
                 plt.bar(series.index, series.values)
                 plt.xticks(rotation=45, ha='right')
-                plt.xlabel("Customer")
+                plt.xlabel("Category")
 
         plt.title(name.replace("_", " ").title())
         plt.ylabel("Revenue ($)")
-        plt.grid(True)
+        plt.grid(True, alpha=0.3)
         
         plt.tight_layout()
         filepath = os.path.join(self.output_dir, f"{name}.png")
-        
-        # ADD THESE PRINT STATEMENTS
-        print("Attempting to save chart to:", filepath)
         
         plt.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close()
         
-        # ADD THIS CHECK
-        if os.path.exists(filepath):
-            print("Chart successfully saved:", filepath)
-        else:
-            print("WARNING: Chart failed to save")
-
         return filepath
-
 
     # --------------------------------------------------
     # DataFrame Chart
     # --------------------------------------------------
+    def _plot_dataframe(self, df: pd.DataFrame, name: str) -> str:
+        """
+        Plot a pandas DataFrame.
+        
+        Args:
+            df: DataFrame to plot
+            name: Name for the chart file and title
+            
+        Returns:
+            Path to the saved chart file
+        """
+        if df.empty:
+            raise ValueError(f"Cannot plot empty DataFrame: {name}")
 
-    def _plot_dataframe(self, df, name):
-
-        plt.figure(figsize=(8,5))
-
+        plt.figure(figsize=(8, 5))
         df.plot()
-
         plt.title(name.replace("_", " ").title())
-
-        filepath = os.path.join(self.output_dir, f"{name}.png")
-
+        plt.grid(True, alpha=0.3)
+        
         plt.tight_layout()
-        plt.savefig(filepath, dpi=300)
+        filepath = os.path.join(self.output_dir, f"{name}.png")
+        plt.savefig(filepath, dpi=300, bbox_inches='tight')
         plt.close()
 
         return filepath
 
-
     # --------------------------------------------------
     # Auto Visualization Engine
     # --------------------------------------------------
-
-    def generate_from_results(self, raw_results):
+    def generate_from_results(self, raw_results: Dict[str, Any]) -> Dict[str, str]:
         """
-        raw_results = original pandas outputs from analytics agent
+        Generate charts from analytics agent results.
+        
+        Args:
+            raw_results: Dictionary of tool_name -> result (pandas Series/DataFrame)
+            
+        Returns:
+            Dictionary of tool_name -> chart file path
         """
-
         charts = {}
 
         for tool_name, result in raw_results.items():
-
             try:
-
-                # -------------------------------
                 # Series
-                # -------------------------------
                 if isinstance(result, pd.Series):
-                    if not result.empty:   # <-- check here
+                    if not result.empty:
                         chart_path = self._plot_series(result, tool_name)
                         charts[tool_name] = chart_path
 
-                # -------------------------------
                 # DataFrame
-                # -------------------------------
                 elif isinstance(result, pd.DataFrame):
-                    if not result.empty:   # <-- check here
+                    if not result.empty:
                         chart_path = self._plot_dataframe(result, tool_name)
                         charts[tool_name] = chart_path
 
@@ -138,16 +171,22 @@ class VisualizationAgent:
 
         return charts
     
-    def plot_product_forecast(self, forecasts, period_label="Next Quarter"):
+    # --------------------------------------------------
+    # Product Forecast Chart
+    # --------------------------------------------------
+    def plot_product_forecast(self, forecasts: Dict[str, Any], period_label: str = "Next Quarter") -> Optional[str]:
         """
-        Plot product-level forecasts as a grouped bar chart with dynamic period label
+        Plot product-level forecasts as a grouped bar chart with dynamic period label.
         
         Args:
             forecasts: Dictionary from forecast_revenue_by_product
             period_label: The period being forecasted (e.g., "Q1 2025", "Next Quarter")
+            
+        Returns:
+            Path to the saved chart file, or None if plotting fails
         """
         try:
-            # Check if forecasts is a dictionary with 'forecasts' key
+            # Handle nested forecast structure
             if isinstance(forecasts, dict) and 'forecasts' in forecasts:
                 forecast_data = forecasts.get("forecasts", {})
                 period_label = forecasts.get("period", period_label)
@@ -176,12 +215,15 @@ class VisualizationAgent:
             products = [x[0] for x in sorted_data]
             forecast_values = [x[1] for x in sorted_data]
             
+            # Create color map
+            colors = plt.cm.viridis([i / len(products) for i in range(len(products))])
+            
             plt.figure(figsize=(12, 6))
-            bars = plt.bar(products, forecast_values, color=['#4caf50', '#2196f3', '#ff9800', '#9c27b0', '#f44336'])
+            bars = plt.bar(products, forecast_values, color=colors)
             
             # Add value labels on bars
             for bar, value in zip(bars, forecast_values):
-                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 500,
+                plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 500,
                         f'${value:,.0f}', ha='center', va='bottom', fontsize=11, fontweight='bold')
             
             # Format the period label for title

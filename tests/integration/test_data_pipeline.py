@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from agents.analytics_agent import AnalyticsAgent
 from agents.insight_agent import InsightAgent, make_json_safe
 from agents.visualization_agent import VisualizationAgent
-from ..fixtures.sample_data import precise_test_data, varied_data, temp_chart_dir
+from tests.fixtures.sample_data import precise_test_data, varied_data, temp_chart_dir
 
 
 class TestDataPipeline:
@@ -41,21 +41,29 @@ class TestDataPipeline:
         json_safe_kpis = make_json_safe(kpis)
         
         # Step 3: Insight agent receives the data (with mocking to avoid real API calls)
-        with patch('agents.insight_agent.ChatOpenAI') as mock_llm:
-            # Create mock insight agent
-            insight = InsightAgent()
-            
-            # Mock the LLM response
+        with patch('agents.insight_agent.ChatOpenAI') as mock_chat:
+            # Create a mock LLM response
+            mock_llm = MagicMock()
             mock_response = MagicMock()
-            mock_response.content = '{"answer": "test", "supporting_insights": {}, "anomalies": {}, "recommended_metrics": {}, "human_readable_summary": ""}'
-            mock_llm.return_value.invoke.return_value = mock_response
+            mock_response.content = json.dumps({
+                "answer": "Analysis complete.",
+                "supporting_insights": {},
+                "anomalies": {},
+                "recommended_metrics": {},
+                "human_readable_summary": "Summary of the analysis."
+            })
+            mock_llm.invoke.return_value = mock_response
+            mock_chat.return_value = mock_llm
+            
+            # Create insight agent with cost tracking disabled for testing
+            insight = InsightAgent(enable_cost_tracking=False)
             
             # Call generate_insights with our data
             raw, parsed = insight.generate_insights({"kpis": json_safe_kpis})
             
-            # Verify the LLM was called with data containing our metrics
-            assert mock_llm.return_value.invoke.called
-            call_args = mock_llm.return_value.invoke.call_args[0][0]
+            # Verify the LLM was called
+            assert mock_llm.invoke.called
+            call_args = mock_llm.invoke.call_args[0][0]
             call_str = str(call_args)
             
             # Check that our values appear in the call
@@ -94,11 +102,11 @@ class TestDataPipeline:
         # Combine into nested structure
         complex_data = {
             "customer_analysis": {
-                "revenue": customer_revenue.to_dict(),
+                "revenue": customer_revenue.to_dict() if not customer_revenue.empty else {},
                 "top_customer": customer_revenue.index[0] if not customer_revenue.empty else None
             },
             "product_analysis": {
-                "revenue": product_revenue.to_dict(),
+                "revenue": product_revenue.to_dict() if not product_revenue.empty else {},
                 "top_product": product_revenue.index[0] if not product_revenue.empty else None
             },
             "growth_metrics": {
@@ -132,7 +140,6 @@ class TestDataPipeline:
         assert isinstance(json_safe_series, dict)
         
         # Test with a DataFrame result
-        # Create a simple DataFrame for testing
         test_df = pd.DataFrame({
             'customer': ['A', 'B'],
             'revenue': [2500, 2000]
@@ -149,20 +156,31 @@ class TestDataPipeline:
         analytics = AnalyticsAgent(precise_test_data)
         customer_revenue = analytics.revenue_by_customer()
         
-        # make_json_safe does NOT convert Series to dict
-        # It returns the Series unchanged
+        # make_json_safe should convert Series to dict
         json_safe = make_json_safe(customer_revenue)
         
-        # This should still be a Series, not a dict
-        assert isinstance(json_safe, pd.Series)
+        # This should now be a dict, not a Series
+        assert isinstance(json_safe, dict)
         
-        # To get a dict, we need to call .to_dict() first
-        series_dict = customer_revenue.to_dict()
-        assert isinstance(series_dict, dict)
+        # Verify the dict contains the expected values
+        assert "Customer A" in json_safe
+        assert "Customer B" in json_safe
+        assert json_safe["Customer A"] == 2500
+        assert json_safe["Customer B"] == 2000
+    
+    def test_full_pipeline_error_handling(self, precise_test_data):
+        """Test that the pipeline handles errors gracefully"""
+        analytics = AnalyticsAgent(precise_test_data)
         
-        # Then make_json_safe will preserve the dict structure
-        json_safe_dict = make_json_safe(series_dict)
-        assert isinstance(json_safe_dict, dict)
+        # Get a valid result
+        kpis = analytics.compute_kpis()
+        
+        # Simulate a problematic value
+        problematic_data = {"kpis": kpis, "invalid": float('nan')}
+        
+        # Should not crash, should convert NaN to None
+        json_safe = make_json_safe(problematic_data)
+        assert json_safe["invalid"] is None
 
 
 class TestJsonSafeFunction:
@@ -175,19 +193,24 @@ class TestJsonSafeFunction:
         assert result == test_dict
     
     def test_make_json_safe_with_series(self, precise_test_data):
-        """Test make_json_safe with Series input - returns Series unchanged"""
+        """Test make_json_safe with Series input - converts to dict"""
         analytics = AnalyticsAgent(precise_test_data)
         test_series = analytics.revenue_by_customer()
         result = make_json_safe(test_series)
-        assert isinstance(result, pd.Series)
-        pd.testing.assert_series_equal(result, test_series)
+        # Should convert to dict
+        assert isinstance(result, dict)
+        assert "Customer A" in result
+        assert "Customer B" in result
     
     def test_make_json_safe_with_dataframe(self):
-        """Test make_json_safe with DataFrame input - returns DataFrame unchanged"""
+        """Test make_json_safe with DataFrame input - converts to list of dicts"""
         test_df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
         result = make_json_safe(test_df)
-        assert isinstance(result, pd.DataFrame)
-        pd.testing.assert_frame_equal(result, test_df)
+        # Should convert to list of dicts
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0] == {"a": 1, "b": 3}
+        assert result[1] == {"a": 2, "b": 4}
     
     def test_make_json_safe_with_numpy_types(self):
         """Test make_json_safe with numpy types"""
@@ -204,3 +227,37 @@ class TestJsonSafeFunction:
         test_dict = {"date": pd.Timestamp("2024-01-01")}
         result = make_json_safe(test_dict)
         assert isinstance(result["date"], str)
+        assert "2024-01-01" in result["date"]
+    
+    def test_make_json_safe_with_nan(self):
+        """Test make_json_safe with NaN values"""
+        test_dict = {"value": float('nan')}
+        result = make_json_safe(test_dict)
+        assert result["value"] is None
+    
+    def test_make_json_safe_with_inf(self):
+        """Test make_json_safe with Infinity values"""
+        test_dict = {"value": float('inf')}
+        result = make_json_safe(test_dict)
+        assert result["value"] is None
+    
+    def test_make_json_safe_with_nested_structures(self):
+        """Test make_json_safe with deeply nested structures"""
+        test_data = {
+            "level1": {
+                "level2": {
+                    "np_int": np.int64(100),
+                    "np_float": np.float64(3.14159),
+                    "timestamp": pd.Timestamp("2024-01-01 12:00:00")
+                }
+            }
+        }
+        
+        result = make_json_safe(test_data)
+        
+        assert isinstance(result["level1"]["level2"]["np_int"], int)
+        assert isinstance(result["level1"]["level2"]["np_float"], float)
+        assert isinstance(result["level1"]["level2"]["timestamp"], str)
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v', '--tb=short'])
