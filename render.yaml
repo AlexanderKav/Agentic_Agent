@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: agentic-analyst
+    name: agentic-analyst-backend
     runtime: image
-    repo: https://github.com/YOUR_USERNAME/agentic-analyst  # Change this!
-    plan: starter
+    repo: https://github.com/AlexanderKav/agentic-analyst
+    plan: free
     dockerfilePath: ./docker/Dockerfile.prod
     dockerContext: .
     envVars:
@@ -30,28 +30,19 @@ services:
         value: production
       - key: LOG_LEVEL
         value: info
+      - key: CORS_ORIGINS
+        value: "https://agentic-analyst.vercel.app,https://*.vercel.app"
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /app/credentials/google-credentials.json
-      # Optional: Email settings
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: FROM_EMAIL
-        sync: false
     healthCheckPath: /health
 
   - type: postgres
     name: agentic-analyst-db
-    plan: starter
+    plan: free
     databaseName: agentic_analyst
-    ipAllowList: []  # Allow all connections (or specify Render IPs)
+    ipAllowList: []
 
   - type: redis
     name: agentic-analyst-redis
-    plan: starter  # Free tier available
+    plan: free
     maxmemoryPolicy: allkeys-lru

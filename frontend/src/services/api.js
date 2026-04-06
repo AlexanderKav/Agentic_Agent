@@ -1,6 +1,8 @@
+// frontend/src/services/api.js
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+// Use environment variable for API URL, fallback to localhost for development
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -17,6 +19,12 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Helper function to get chart base URL
+const getChartBaseUrl = () => {
+  // Use the same base URL as the API
+  return API_BASE_URL.replace('/api/v1', '');
+};
 
 // ==================== AUTH ENDPOINTS ====================
 
@@ -47,7 +55,6 @@ export const resendVerificationEmail = async (email) => {
 };
 
 // ==================== HISTORY ENDPOINTS ====================
-
 
 // Get analysis history (handles pagination)
 export const getAnalysisHistory = async (limit = 20, offset = 0) => {
@@ -85,6 +92,7 @@ export const getAnalysisInsights = async (id, insightType = null) => {
   const response = await api.get(url);
   return response.data;
 };
+
 // ==================== EMAIL ENDPOINTS ====================
 
 export const sendAnalysisEmail = async (toEmail, analysisId = null) => {
@@ -144,14 +152,16 @@ export const testGoogleSheetsConnection = async (sheetsConfig) => {
 
 // Health check
 export const checkHealth = async () => {
-  const response = await axios.get('http://localhost:8000/health');
+  const chartBaseUrl = getChartBaseUrl();
+  const response = await axios.get(`${chartBaseUrl}/health`);
   return response.data;
 };
 
 // Check if chart exists
 export const checkChartExists = async (filename) => {
   try {
-    const response = await axios.head(`http://localhost:8000/api/v1/analysis/chart/${filename}`);
+    const chartBaseUrl = getChartBaseUrl();
+    const response = await axios.head(`${chartBaseUrl}/api/v1/analysis/chart/${filename}`);
     return response.status === 200;
   } catch (error) {
     return false;
@@ -160,10 +170,11 @@ export const checkChartExists = async (filename) => {
 
 // Get chart URL
 export const getChartUrl = (filename, key = 0) => {
-  return `http://localhost:8000/api/v1/analysis/chart/${encodeURIComponent(filename)}?key=${key}`;
+  const chartBaseUrl = getChartBaseUrl();
+  return `${chartBaseUrl}/api/v1/analysis/chart/${encodeURIComponent(filename)}?key=${key}`;
 };
 
-
+// SQLite file upload
 export const uploadSQLiteFile = async (file, question, table) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -171,7 +182,7 @@ export const uploadSQLiteFile = async (file, question, table) => {
   formData.append('table', table);
   
   const token = localStorage.getItem('token');
-  const response = await axios.post('/analysis/upload-sqlite', formData, {
+  const response = await axios.post(`${API_BASE_URL}/analysis/upload-sqlite`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
       'Authorization': `Bearer ${token}`
@@ -190,7 +201,7 @@ export const forgotPassword = async (email) => {
 export const resetPassword = async (token, new_password) => {
   const response = await api.post('/auth/reset-password', { 
     token, 
-    new_password  // Make sure this matches the backend field name
+    new_password
   });
   return response.data;
 };

@@ -62,3 +62,22 @@ htmlcov/
 
 # Ignore credentials
 agentic-analyst-489012-a0aa86d33643.json
+
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# But keep the example file
+!frontend/.env.example
+
+# files
+updated.xlsx
+data.csv
