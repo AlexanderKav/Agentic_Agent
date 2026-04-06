@@ -36,7 +36,7 @@ services:
         value: /app/credentials/google-credentials.json
     healthCheckPath: /health
 
-  - type: postgres
+  - type: postgresql
     name: agentic-analyst-db
     plan: free
     databaseName: agentic_analyst
