@@ -4,12 +4,14 @@ import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';  // Add this import
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
+
 const VerificationPending = () => {
   const { user, logout } = useAuth();
 
   const handleResendEmail = async () => {
     try {
-      await axios.post('http://localhost:8000/api/v1/auth/resend-verification', {
+      await axios.post(`${API_BASE_URL}/auth/resend-verification`, {
         email: user.email
       });
       alert('Verification email resent! Check your inbox.');

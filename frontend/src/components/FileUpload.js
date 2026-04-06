@@ -7,7 +7,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import axios from 'axios';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 const FileUpload = ({ onFileSelect, onClearResults }) => {
   const [fileError, setFileError] = useState(null);

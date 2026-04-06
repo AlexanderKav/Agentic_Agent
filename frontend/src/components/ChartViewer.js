@@ -16,6 +16,9 @@ import ImageIcon from '@mui/icons-material/Image';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
+// 🔥 Get API base URL from environment variable
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
+
 const ChartViewer = ({ charts }) => {
   const [loadingStates, setLoadingStates] = useState({});
   const [errorStates, setErrorStates] = useState({});
@@ -40,20 +43,12 @@ const ChartViewer = ({ charts }) => {
     return chartPath;
   };
 
-  // Get the base URL for charts (detect environment)
+  // Get the base URL for charts using the environment variable
   const getBaseUrl = () => {
-    // Check if we're in production (Docker) or development
-    const isLocalhost = window.location.hostname === 'localhost' || 
-                        window.location.hostname === '127.0.0.1';
-    
-    if (isLocalhost) {
-      // Local development - use absolute URL with port
-      // Make sure this matches your backend port
-      return 'http://localhost:8000/api/v1/analysis/chart';
-    } else {
-      // Production/Docker - use relative URL
-      return '/api/v1/analysis/chart';
-    }
+    // Remove /api/v1 to get base URL for charts
+    const baseUrl = API_BASE_URL.replace('/api/v1', '');
+    console.log(`📷 Using chart base URL: ${baseUrl}`);
+    return `${baseUrl}/api/v1/analysis/chart`;
   };
 
   const getImageUrl = (chartPath) => {

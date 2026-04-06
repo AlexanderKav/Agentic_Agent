@@ -6,6 +6,8 @@ import ErrorIcon from '@mui/icons-material/Error';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
+
 const VerificationSuccess = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -32,7 +34,7 @@ const VerificationSuccess = () => {
         console.log('🔍 Verifying email with token:', token);
         
         // Call backend verification endpoint
-        const response = await axios.get(`http://localhost:8000/api/v1/auth/verify-email?token=${token}`);
+        const response = await axios.get(`${API_BASE_URL}/auth/verify-email?token=${token}`);
         
         console.log('✅ Verification response:', response.data);
         

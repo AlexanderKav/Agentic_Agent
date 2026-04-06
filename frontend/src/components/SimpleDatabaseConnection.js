@@ -32,7 +32,7 @@ import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { testDatabaseConnection } from '../services/api';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 // Helper function to extract error message from FastAPI response

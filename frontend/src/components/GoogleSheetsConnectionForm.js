@@ -23,6 +23,7 @@ import {
   Warning as WarningIcon
 } from '@mui/icons-material';
 
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 const MAX_SHEET_SIZE = 100000;
 
 // Service account email - update this with your actual service account email
