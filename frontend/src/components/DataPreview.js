@@ -8,7 +8,6 @@ import {
   TableHead,
   TableRow,
   Typography,
-  Box,
 } from '@mui/material';
 
 const DataPreview = ({ data }) => {

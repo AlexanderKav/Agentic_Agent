@@ -1,6 +1,6 @@
 // frontend/src/App.js - Simplified version with proper routing
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route} from 'react-router-dom';
 import {
   Container,
   AppBar,
@@ -42,7 +42,6 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import { 
   uploadFile, 
   analyzeDatabase, 
-  testDatabaseConnection,
   analyzeGoogleSheets,
   testGoogleSheetsConnection,
   getAnalysisById,

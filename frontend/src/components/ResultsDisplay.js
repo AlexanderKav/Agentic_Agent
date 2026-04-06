@@ -11,16 +11,10 @@ import {
   Alert,
   Avatar,
   Collapse,
-  IconButton,
-  Tooltip
+  IconButton
 } from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
-import AnalyticsIcon from '@mui/icons-material/Analytics';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import ReportProblemIcon from '@mui/icons-material/ReportProblem';
-import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
