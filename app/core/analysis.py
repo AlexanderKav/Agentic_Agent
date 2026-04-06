@@ -77,110 +77,65 @@ class AnalysisOrchestrator:
         no_spaces = text.replace(' ', '')
         
         # Long string with no spaces is suspicious
-        if len(no_spaces) > 20 and ' ' not in text:
+        if len(no_spaces) > 15 and ' ' not in text:
             return True
         
         # Check for random keyboard mash patterns
         gibberish_patterns = [
-            r'^[a-z]{15,}$',        # 15+ random letters with no spaces
-            r'^[0-9]{10,}$',        # 10+ numbers
-            r'^[a-z0-9]{15,}$',     # 15+ alphanumeric with no spaces
-            r'[^\w\s]{5,}',         # 5+ special characters in a row
-            r'^[a-z]{1,3}$',        # Single letters or very short words
+            r'^[a-z]{10,}$',        # 10+ random letters with no spaces
+            r'^[0-9]{8,}$',         # 8+ numbers
+            r'^[a-z0-9]{12,}$',     # 12+ alphanumeric with no spaces
+            r'[^\w\s]{4,}',         # 4+ special characters in a row
+            r'^[a-z]{1,3}$',        # Single letters or very short words (like "hpp", "asd")
             r'^[0-9]+$',            # Only numbers
-            r'^[!@#$%^&*()]+$',     # Only special characters
         ]
         
         for pattern in gibberish_patterns:
             if re.match(pattern, text, re.IGNORECASE):
                 return True
         
-        # Check common keyboard mashes
-        keyboard_mashes = [
-            'asdf', 'qwerty', 'zxcv', 'test123', '123456', 
-            'password', 'abc123', 'qwerty123', 'aaaaaaaa', 
-            'bbbbbbbb', 'abcdefgh', 'qwertyuiop'
-        ]
-        if text.lower() in keyboard_mashes:
-            return True
-        
         return False
 
     def _check_question_relevance(self, question: str, df: pd.DataFrame) -> tuple[bool, str]:
         """
         Check if question is relevant to the business data.
-        This is a PRE-filter before any analysis.
+        Only accepts questions with actual business keywords.
         """
         if not question or not question.strip():
             return True, "No question provided (using default overview)"
 
         question_lower = question.lower().strip()
         
-        # 🔥 FIRST: Check for URLs (BEFORE any other checks)
+        # Check for URLs
         if self._is_url(question_lower):
-            print(f"❌ URL detected: {question_lower[:100]}...")
-            return False, "URL detected. Please ask a business question about your data."
+            return False, "Please ask a business question about your data, not a URL."
         
-        # 🔥 SECOND: Check for gibberish
+        # Check for gibberish
         if self._is_gibberish(question_lower):
-            print(f"❌ Gibberish detected: {question_lower}")
             return False, "I couldn't understand that question. Please ask a business-related question about your data."
         
-        # Quick filter for very short/meaningless questions
+        # Very short questions
         if len(question_lower) < 3:
-            return False, "Question is too short or meaningless. Please ask a specific business question."
+            return False, "Please ask a complete business question."
+        
+        # 🔥 Check for common greetings and non-business phrases
+        non_business_phrases = [
+            'how are you', 'how are you doing', 'how are things', 'how is it going',
+            'what\'s up', 'whats up', 'hello', 'hi there', 'hey there',
+            'good morning', 'good afternoon', 'good evening', 'nice to meet you',
+            'thank you', 'thanks', 'appreciate it', 'you\'re welcome',
+            'how was your day', 'have a good day', 'take care', 'see you later'
+        ]
+        
+        for phrase in non_business_phrases:
+            if phrase in question_lower:
+                print(f"❌ Non-business phrase detected: '{phrase}'")
+                return False, "I'm a business analytics assistant. I can only answer questions about your business data. Please ask a question about revenue, customers, products, or trends."
         
         # Get data columns for context
         columns = [col.lower() for col in df.columns]
         
-        # Business keywords - removed 'do' to avoid false positives with URLs
-        business_keywords = [
-            # Revenue/Financial
-            'revenue', 'sales', 'profit', 'income', 'earnings', 'turnover',
-            'cost', 'expense', 'margin', 'price', 'value', 'amount',
-            'total', 'sum', 'average', 'mean', 'median', 'kpi', 'metric',
-
-            # Customer related
-            'customer', 'client', 'buyer', 'account', 'user', 'subscription',
-            'retention', 'churn', 'acquisition', 'lifetime', 'ltv',
-
-            # Product related
-            'product', 'item', 'service', 'plan', 'sku', 'category',
-            'inventory', 'stock', 'demand', 'popular', 'best', 'top',
-            'worst', 'ranking', 'rank',
-
-            # Trends/Time
-            'trend', 'growth', 'decline', 'increase', 'decrease', 'change',
-            'month', 'year', 'quarter', 'weekly', 'daily', 'time', 'period',
-            'seasonal', 'forecast', 'predict', 'future',
-
-            # Regional
-            'region', 'market', 'geo', 'location', 'country', 'city',
-            'area', 'territory', 'zone',
-
-            # Performance
-            'performance', 'performing', 'efficiency', 'conversion', 'rate', 'ratio',
-            'percentage', 'share', 'market share', 'health', 'healthy',
-
-            # Risks
-            'risk', 'risks', 'danger', 'threat', 'issue', 'problem', 'concern',
-            'warning', 'alert', 'vulnerability', 'exposure',
-
-            # Status
-            'paid', 'pending', 'overdue', 'refunded', 'status', 'payment',
-            'order', 'transaction', 'invoice', 'subscription', 'failed',
-
-            # Business health
-            'well', 'good', 'bad', 'improve', 'improving', 'declining',
-            'stable', 'volatile', 'outlook', 'overview', 'summary', 'dashboard',
-            
-            # Question starters (removed 'do' to avoid false positives)
-            'show', 'tell', 'what', 'how', 'which', 'when', 'where', 'why',
-            'is', 'are', 'does', 'can', 'could', 'would', 'should',
-            'compare', 'analyze', 'calculate', 'compute', 'find', 'get'
-        ]
-
-        # Check against column names (most specific matching)
+        # Check against column names (strongest signal)
         column_matches = []
         for col in columns:
             if col in question_lower:
@@ -191,19 +146,44 @@ class AnalysisOrchestrator:
                     column_matches.append(word)
         
         column_matches = list(set(column_matches))
-
-        # Strong signal: question mentions actual data columns
+        
+        # If question mentions actual data columns, it's relevant
         if column_matches:
             print(f"✅ Column matches: {column_matches[:5]}")
             return True, f"Question relates to data column(s): {', '.join(column_matches[:3])}"
-
-        # Check for business keyword matches
+        
+        # 🔥 BUSINESS KEYWORDS - Only these make a question relevant
+        business_keywords = [
+            'revenue', 'sales', 'profit', 'income', 'earnings', 'turnover',
+            'cost', 'expense', 'margin', 'price', 'value', 'amount',
+            'total', 'sum', 'average', 'mean', 'median', 'kpi', 'metric',
+            'customer', 'client', 'buyer', 'account', 'user', 'subscription',
+            'retention', 'churn', 'acquisition', 'lifetime', 'ltv',
+            'product', 'item', 'service', 'plan', 'sku', 'category',
+            'inventory', 'stock', 'demand', 'popular', 'best', 'top',
+            'worst', 'ranking', 'rank',
+            'trend', 'growth', 'decline', 'increase', 'decrease', 'change',
+            'month', 'year', 'quarter', 'weekly', 'daily', 'time', 'period',
+            'seasonal', 'forecast', 'predict', 'future', 'projection',
+            'region', 'market', 'geo', 'location', 'country', 'city',
+            'area', 'territory', 'zone',
+            'performance', 'efficiency', 'conversion', 'rate', 'ratio',
+            'percentage', 'share', 'market share', 'health',
+            'risk', 'danger', 'threat', 'issue', 'problem', 'concern',
+            'warning', 'alert', 'vulnerability', 'anomaly', 'outlier',
+            'paid', 'pending', 'overdue', 'refunded', 'status', 'payment',
+            'order', 'transaction', 'invoice', 'failed',
+            'improve', 'improving', 'declining', 'stable', 'volatile', 
+            'outlook', 'overview', 'summary', 'dashboard'
+        ]
+        
+        # Check if question contains ANY business keyword
         matches = [kw for kw in business_keywords if kw in question_lower]
         
         if matches:
-            print(f"✅ Keyword matches: {matches[:5]}")
+            print(f"✅ Business keywords found: {matches[:5]}")
             return True, f"Question is relevant (matched: {', '.join(matches[:3])})"
-
+        
         # Check for business phrase patterns
         business_phrases = [
             r'how\s+is\s+the\s+business',
@@ -217,53 +197,17 @@ class AnalysisOrchestrator:
             r'is\s+the\s+business\s+doing\s+well',
             r'are\s+there\s+any\s+risks',
             r'what\s+are\s+the\s+risks',
-            r'business\s+risks',
-            r'what\s+should\s+we\s+be\s+concerned\s+about',
-            r'how\s+are\s+things\s+looking',
-            r'business\s+health',
-            r'company\s+health',
-            r'performance\s+review'
+            r'business\s+risks'
         ]
-
+        
         for pattern in business_phrases:
             if re.search(pattern, question_lower):
                 print(f"✅ Business phrase matched: {pattern}")
                 return True, "Question is relevant (business performance inquiry)"
-
-        # If question contains business-related terms, be permissive
-        business_terms = ['business', 'company', 'performance', 'risk', 'overview', 'summary']
-        if any(term in question_lower for term in business_terms):
-            print("✅ Question contains business terms, marking as relevant")
-            return True, "Question is relevant (business inquiry)"
-
-        # Check for obvious off-topic patterns (only if no business indicators)
-        off_topic_patterns = [
-            r'\bhappiest\b', r'\bsaddest\b', r'\bweather\b', r'\bclimate\b',
-            r'\bpolitics\b', r'\belection\b', r'\bpresident\b', r'\bprime\s+minister\b',
-            r'\bfamous\b', r'\bcelebrity\b', r'\bactor\b', r'\bactress\b',
-            r'\bsports\b', r'\bfootball\b', r'\bsoccer\b', r'\bbasketball\b',
-            r'\bmovie\b', r'\bfilm\b', r'\bmusic\b', r'\bsong\b',
-            r'\bworld\s+record\b', r'\bguinness\b',
-            r'\bwho\s+is\b', r'\bmeaning\s+of\b',
-            r'\bhistory\b', r'\binventor\b', r'\bdiscovery\b',
-            r'\brecipe\b', r'\bcooking\b', r'\bfood\b',
-            r'\btravel\b', r'\bvacation\b', r'\bholiday\b',
-            r'\bhow\s+to\s+make\b', r'\bhow\s+to\s+build\b',
-            r'\bspaghetti\b', r'\bpasta\b', r'\bpizza\b',
-            r'\bhello\b', r'\bhi\b', r'\bhey\b', r'\bgreetings\b',
-        ]
-
-        for pattern in off_topic_patterns:
-            if re.search(pattern, question_lower):
-                print(f"❌ Off-topic pattern matched: {pattern}")
-                return False, "This question appears to be off-topic for business data analysis."
-
-        # If we have data columns and the question isn't obviously off-topic, assume it's relevant
-        if columns:
-            print("⚠️ No clear match but data exists. Defaulting to relevant.")
-            return True, "Question is potentially relevant to business data."
-
-        return False, "Question doesn't seem related to your business data. Try asking about revenue, customers, products, or trends."
+        
+        # 🔥 If no business keywords or column matches, REJECT
+        print(f"❌ No business relevance detected: '{question}'")
+        return False, "I can only answer business-related questions about your data (revenue, sales, customers, products, trends, forecasts, etc.). Please ask a business question."
 
     def _get_irrelevant_response(self, question: str, df: pd.DataFrame, execution_time: float = 0.0) -> tuple[dict, float]:
         """Generate a friendly response for irrelevant questions."""
