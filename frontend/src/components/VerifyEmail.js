@@ -1,7 +1,11 @@
+// frontend/src/components/VerifyEmail.js
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Container, Paper, Typography, Box, CircularProgress, Alert, Button } from '@mui/material';
 import axios from 'axios';
+
+// 🔥 Use environment variable
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
 
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
@@ -20,9 +24,12 @@ const VerifyEmail = () => {
 
     const verifyEmail = async () => {
       try {
-        await axios.get(`http://localhost:8000/api/v1/auth/verify-email?token=${token}`);
+        // 🔥 FIXED: Use environment variable, not hardcoded localhost
+        const response = await axios.get(`${API_BASE_URL}/auth/verify-email?token=${token}`);
+        console.log('Verification response:', response.data);
         setSuccess(true);
       } catch (err) {
+        console.error('Verification error:', err);
         setError(err.response?.data?.detail || 'Verification failed');
       } finally {
         setLoading(false);
