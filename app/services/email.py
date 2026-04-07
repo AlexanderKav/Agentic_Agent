@@ -120,7 +120,7 @@ Agentic Analyst Team
         return await self._send_via_sendgrid(to_email, "Reset Your Password", content)
 
     async def send_analysis_results(self, to_email: str, question: str, results: dict, charts: dict = None):
-        """Send analysis results email with chart attachments"""
+        """Send analysis results email with chart attachments (if available)"""
         subject = f"Agentic Analyst Results: {question[:40]}..."
         
         # Extract insights safely
@@ -197,72 +197,58 @@ Agentic Analyst Team
             for i, step in enumerate(recommendations, 1):
                 recommendations_text += f"  {i}. {step}\n"
         
-        # Charts notice
+        # Charts notice (only if charts actually exist)
         charts_text = ""
-        if charts and len(charts) > 0:
-            charts_text = f"\n\n📎 {len(charts)} chart(s) attached to this email.\n"
-        
-        # Convert relative chart paths to absolute paths for attachment
-        abs_charts = {}
+        valid_charts = {}
         if charts:
-            base_dir = os.path.abspath(".")
-            possible_dirs = [
-                "agents/charts",
-                "/app/agents/charts",
-                os.path.join(base_dir, "agents", "charts"),
-            ]
-            
+            # Only include charts that actually exist
             for name, path in charts.items():
-                found = False
                 if path and os.path.exists(path):
-                    abs_charts[name] = path
-                    print(f"✅ Chart '{name}' found at: {path}")
-                    found = True
+                    valid_charts[name] = path
+                    print(f"✅ Chart found: {name} at {path}")
                 else:
-                    filename = os.path.basename(path) if path else f"{name}.png"
-                    for dir_path in possible_dirs:
-                        full_path = os.path.join(dir_path, filename)
-                        if os.path.exists(full_path):
-                            abs_charts[name] = full_path
-                            print(f"✅ Chart '{name}' found at: {full_path}")
-                            found = True
-                            break
-                
-                if not found:
-                    print(f"⚠️ Chart '{name}' not found. Tried: {path}, {filename} in {possible_dirs}")
-                    abs_charts[name] = path
+                    print(f"⚠️ Chart not found: {name} at {path}")
+            
+            if valid_charts:
+                charts_text = f"\n\n📎 {len(valid_charts)} chart(s) attached to this email.\n"
+            else:
+                charts_text = "\n\n⚠️ No charts were generated for this analysis.\n"
         
-        # Create JSON attachment
+        # Create JSON attachment (without charts data)
         json_results = None
         if results:
             try:
-                json_str = json.dumps(results, indent=2, default=str)
+                # Remove charts from results to save space
+                clean_results = results.copy()
+                if 'results' in clean_results and isinstance(clean_results['results'], dict):
+                    clean_results['results'].pop('charts', None)
+                json_str = json.dumps(clean_results, indent=2, default=str)
                 json_results = json_str.encode('utf-8')
             except Exception as e:
                 print(f"⚠️ Could not create JSON attachment: {e}")
         
         # Create the full email content
         content = f"""
-{'='*60}
-🤖 AGENTIC ANALYST - ANALYSIS RESULTS
-{'='*60}
+    {'='*60}
+    🤖 AGENTIC ANALYST - ANALYSIS RESULTS
+    {'='*60}
 
-Your Question: "{question}"
+    Your Question: "{question}"
 
-Analysis Summary:
-{insights}
-{findings_text}
-{kpi_text}
-{anomalies_text}
-{recommendations_text}
-{charts_text}
-{'='*60}
-📎 Complete analysis results attached as JSON file.
+    Analysis Summary:
+    {insights}
+    {findings_text}
+    {kpi_text}
+    {anomalies_text}
+    {recommendations_text}
+    {charts_text}
+    {'='*60}
+    📎 Complete analysis results attached as JSON file.
 
-Agentic Analyst Team
-"""
+    Agentic Analyst Team
+    """
         
-        return await self._send_via_sendgrid(to_email, subject, content, abs_charts, json_results)
+        return await self._send_via_sendgrid(to_email, subject, content, valid_charts, json_results)
 
 
 __all__ = ['EmailService']
