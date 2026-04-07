@@ -86,7 +86,7 @@ Agentic Analyst Team
         return await self._send_via_sendgrid(to_email, "Reset Your Password", content)
 
     async def send_analysis_results(self, to_email: str, question: str, results: dict, charts: dict = None):
-        """Send analysis results email"""
+        """Send analysis results email - FIXED KPI FORMATTING"""
         subject = f"Agentic Analyst Results: {question[:40]}..."
         
         # Extract insights
@@ -99,20 +99,22 @@ Agentic Analyst Team
         if not kpis:
             kpis = results.get("kpis", {})
         
-        # Build KPIs text
+        # Build KPIs text - FIXED FORMATTING
         kpi_text = ""
         if kpis:
             kpi_text = "\n\nKey Metrics:\n"
             for key, value in kpis.items():
                 if isinstance(value, (int, float)):
-                    if "revenue" in key or "profit" in key:
-                        formatted = f"${value:,.0f}"
-                    elif "margin" in key:
-                        formatted = f"{value:.1%}"
+                    # Handle different KPI types
+                    if "margin" in key:
+                        formatted = f"{value:.1%}"  # Percentage
+                    elif "revenue" in key or "profit" in key or "cost" in key:
+                        formatted = f"${value:,.0f}"  # Currency
                     else:
-                        formatted = f"{value:,.0f}"
+                        formatted = f"{value:,.0f}"  # Regular number
                 else:
                     formatted = str(value)
+                
                 label = key.replace('_', ' ').title()
                 kpi_text += f"  • {label}: {formatted}\n"
         
@@ -122,19 +124,19 @@ Agentic Analyst Team
             charts_text = f"\n\n📎 {len(charts)} chart(s) attached.\n"
         
         content = f"""
-{'='*50}
-Agentic Analyst Results
-{'='*50}
+    {'='*50}
+    Agentic Analyst Results
+    {'='*50}
 
-Your Question: {question}
+    Your Question: {question}
 
-Key Insights:
-{insights}
-{kpi_text}
-{charts_text}
-{'='*50}
-Complete analysis results attached.
+    Key Insights:
+    {insights}
+    {kpi_text}
+    {charts_text}
+    {'='*50}
+    Complete analysis results attached.
 
-Agentic Analyst Team
-"""
+    Agentic Analyst Team
+    """
         return await self._send_via_sendgrid(to_email, subject, content)
