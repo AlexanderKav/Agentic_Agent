@@ -38,7 +38,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     verified_at = Column(DateTime, nullable=True)
     is_admin = Column(Boolean, default=False)
-    last_login = Column(DateTime, nullable=True)  # Add this column
+  #  last_login = Column(DateTime, nullable=True)  # Add this column
 
     analyses = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan")
 
@@ -126,9 +126,9 @@ class User(Base):
         
         return token_valid and not_expired
 
-    def update_last_login(self) -> None:
-        """Update last login timestamp"""
-        self.last_login = datetime.utcnow()
+   # def update_last_login(self) -> None:
+    #    """Update last login timestamp"""
+     #   self.last_login = datetime.utcnow()
 
     def __repr__(self) -> str:
         """String representation for debugging"""
