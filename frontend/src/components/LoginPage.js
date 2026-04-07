@@ -37,18 +37,35 @@ const LoginPage = () => {
     setError('');
     setLoading(true);
 
+    console.log("==========================================");
+    console.log("🔐 LOGIN ATTEMPT");
+    console.log("   Username:", formData.username);
+    console.log("   Password length:", formData.password.length);
+    console.log("   API URL:", process.env.REACT_APP_API_URL);
+    console.log("==========================================");
+
     try {
       const response = await apiLogin(formData.username, formData.password);
       
-      // Call auth context login
+      console.log("✅ Login response:", response);
+      console.log("   User:", response.user?.username);
+      console.log("   Token:", response.access_token?.substring(0, 20) + "...");
+      
       authLogin(response.user, response.access_token);
       
-      // Navigate to dashboard
+      console.log("✅ Login successful, navigating to /");
       navigate('/');
       
     } catch (err) {
-      console.error('Login error:', err);
-      setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
+      console.error("❌ Login error:", err);
+      console.error("   Status:", err.response?.status);
+      console.error("   Data:", err.response?.data);
+      
+      let errorMessage = 'Login failed. Please check your credentials.';
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
