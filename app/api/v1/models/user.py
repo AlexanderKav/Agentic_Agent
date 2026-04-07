@@ -11,7 +11,8 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.encryption import get_db_encryption
 
-pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+# 🔥 Change from argon2 to bcrypt (more reliable on Render)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class User(Base):
@@ -37,7 +38,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     verified_at = Column(DateTime, nullable=True)
     is_admin = Column(Boolean, default=False)
-    #last_login = Column(DateTime, nullable=True)  # Optional: track last login
+    last_login = Column(DateTime, nullable=True)  # Add this column
 
     analyses = relationship("AnalysisHistory", back_populates="user", cascade="all, delete-orphan")
 
@@ -76,10 +77,13 @@ class User(Base):
         if len(password) < 8:
             raise ValueError("Password must be at least 8 characters long")
         self.hashed_password = pwd_context.hash(password)
+        print(f"✅ Password hashed for user {self.username}")
 
     def verify_password(self, password: str) -> bool:
         """Verify password against hash"""
-        return pwd_context.verify(password, self.hashed_password)
+        result = pwd_context.verify(password, self.hashed_password)
+        print(f"🔐 Password verification for {self.username}: {result}")
+        return result
 
     def generate_verification_token(self) -> str:
         """Generate email verification token"""
@@ -104,14 +108,23 @@ class User(Base):
         """Generate a password reset token"""
         self.reset_token = secrets.token_urlsafe(32)
         self.reset_token_expires = datetime.utcnow() + timedelta(hours=24)
+        print(f"🔐 Reset token generated for {self.username}, expires at {self.reset_token_expires}")
         return self.reset_token
 
     def verify_reset_token(self, token: str) -> bool:
         """Verify reset token is valid"""
         if not self.reset_token or not self.reset_token_expires:
+            print(f"❌ Reset token verification failed: missing token or expiry for {self.username}")
             return False
-        return (self.reset_token == token and
-                datetime.utcnow() < self.reset_token_expires)
+        
+        token_valid = self.reset_token == token
+        not_expired = datetime.utcnow() < self.reset_token_expires
+        
+        print(f"🔐 Reset token verification for {self.username}:")
+        print(f"   Token matches: {token_valid}")
+        print(f"   Not expired: {not_expired} (expires at {self.reset_token_expires}, now {datetime.utcnow()})")
+        
+        return token_valid and not_expired
 
     def update_last_login(self) -> None:
         """Update last login timestamp"""
