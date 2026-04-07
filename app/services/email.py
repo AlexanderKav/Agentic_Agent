@@ -39,7 +39,7 @@ class EmailService:
         print(f"📧 From: {self.from_email}")
         print(f"📧 Frontend URL: {self.frontend_url}")
 
-    async def _send_via_sendgrid(self, to_email: str, subject: str, html_content: str) -> tuple:
+    async def _send_via_sendgrid(self, to_email: str, subject: str, html_content: str, plain_text_content: str = None) -> tuple:
         """Send email using SendGrid API"""
         if not self.sendgrid_client:
             return False, "SendGrid client not initialized"
@@ -54,6 +54,17 @@ class EmailService:
             )
             message.html_content = html_content
             
+            # Add plain text version if provided (fallback for email clients)
+            if plain_text_content:
+                message.plain_text_content = plain_text_content
+            
+            # Log request details for debugging
+            print(f"📧 SendGrid Request:")
+            print(f"   From: {self.from_email}")
+            print(f"   To: {to_email}")
+            print(f"   Subject: {subject}")
+            print(f"   HTML length: {len(html_content)} chars")
+            
             response = self.sendgrid_client.send(message)
             
             if response.status_code == 202:
@@ -61,7 +72,6 @@ class EmailService:
                 return True, "Email sent successfully"
             else:
                 print(f"❌ SendGrid returned {response.status_code}")
-                # Try to get response body for more info
                 try:
                     print(f"Response body: {response.body}")
                 except:
@@ -69,8 +79,15 @@ class EmailService:
                 return False, f"SendGrid error: {response.status_code}"
                 
         except Exception as e:
-            error_msg = f"SendGrid error: {str(e)}"
-            print(f"❌ {error_msg}")
+            error_msg = str(e)
+            print(f"❌ SendGrid error: {error_msg}")
+            
+            # Try to extract more details from the exception
+            if hasattr(e, 'body'):
+                print(f"Error body: {e.body}")
+            if hasattr(e, 'headers'):
+                print(f"Error headers: {e.headers}")
+            
             import traceback
             traceback.print_exc()
             return False, error_msg
@@ -87,8 +104,9 @@ class EmailService:
         print(f"🔗 Verification link: {verification_link}")
 
         html = self._get_verification_html(username, verification_link)
+        plain_text = self._get_verification_plain_text(username, verification_link)
         
-        return await self._send_via_sendgrid(to_email, "Verify Your Email - Agentic Analyst", html)
+        return await self._send_via_sendgrid(to_email, "Verify Your Email - Agentic Analyst", html, plain_text)
 
     async def send_password_reset_email(self, to_email: str, username: str, token: str):
         """Send password reset email"""
@@ -102,8 +120,9 @@ class EmailService:
         print(f"🔗 Reset link: {reset_link}")
 
         html = self._get_password_reset_html(username, reset_link)
+        plain_text = self._get_password_reset_plain_text(username, reset_link)
         
-        return await self._send_via_sendgrid(to_email, "Reset Your Password - Agentic Analyst", html)
+        return await self._send_via_sendgrid(to_email, "Reset Your Password - Agentic Analyst", html, plain_text)
 
     async def send_analysis_results(self, to_email: str, question: str, results: dict[str, Any],
                                     charts: dict[str, str] | None = None):
@@ -115,11 +134,12 @@ class EmailService:
         subject = f"📊 Agentic Analyst Results: {question[:50]}..."
         
         html = self._get_analysis_html(question, results)
+        plain_text = self._get_analysis_plain_text(question, results)
         
-        return await self._send_via_sendgrid(to_email, subject, html)
+        return await self._send_via_sendgrid(to_email, subject, html, plain_text)
 
     def _get_verification_html(self, username: str, verification_link: str) -> str:
-        """Generate simplified verification email HTML"""
+        """Generate verification email HTML"""
         return f"""
         <html>
         <body>
@@ -127,7 +147,6 @@ class EmailService:
             <p>Hi {username},</p>
             <p>Please verify your email address by clicking the link below:</p>
             <p><a href="{verification_link}">Verify Email Address</a></p>
-            <p>Or copy this link: {verification_link}</p>
             <p>This link expires in 24 hours.</p>
             <p>If you didn't create an account, please ignore this email.</p>
             <br>
@@ -136,8 +155,26 @@ class EmailService:
         </html>
         """
 
+    def _get_verification_plain_text(self, username: str, verification_link: str) -> str:
+        """Generate verification email plain text"""
+        return f"""
+Welcome to Agentic Analyst!
+
+Hi {username},
+
+Please verify your email address by clicking the link below:
+
+{verification_link}
+
+This link expires in 24 hours.
+
+If you didn't create an account, please ignore this email.
+
+Agentic Analyst Team
+"""
+
     def _get_password_reset_html(self, username: str, reset_link: str) -> str:
-        """Generate simplified password reset email HTML"""
+        """Generate password reset email HTML"""
         return f"""
         <html>
         <body>
@@ -145,7 +182,6 @@ class EmailService:
             <p>Hi {username},</p>
             <p>We received a request to reset your password. Click the link below to reset it:</p>
             <p><a href="{reset_link}">Reset Password</a></p>
-            <p>Or copy this link: {reset_link}</p>
             <p>This link expires in 24 hours.</p>
             <p>If you didn't request this, please ignore this email.</p>
             <br>
@@ -154,8 +190,26 @@ class EmailService:
         </html>
         """
 
+    def _get_password_reset_plain_text(self, username: str, reset_link: str) -> str:
+        """Generate password reset email plain text"""
+        return f"""
+Password Reset Request
+
+Hi {username},
+
+We received a request to reset your password. Click the link below to reset it:
+
+{reset_link}
+
+This link expires in 24 hours.
+
+If you didn't request this, please ignore this email.
+
+Agentic Analyst Team
+"""
+
     def _get_analysis_html(self, question: str, results: dict) -> str:
-        """Generate simplified analysis results email HTML"""
+        """Generate analysis results email HTML"""
         insights = results.get("insights", "No insights available")
         if isinstance(insights, dict):
             insights = insights.get("human_readable_summary") or insights.get("answer") or str(insights)
@@ -200,6 +254,45 @@ class EmailService:
         </body>
         </html>
         """
+
+    def _get_analysis_plain_text(self, question: str, results: dict) -> str:
+        """Generate analysis results email plain text"""
+        insights = results.get("insights", "No insights available")
+        if isinstance(insights, dict):
+            insights = insights.get("human_readable_summary") or insights.get("answer") or str(insights)
+        
+        # Get KPIs if available
+        kpis = results.get("results", {}).get("kpis", {})
+        if not kpis:
+            kpis = results.get("kpis", {})
+        
+        kpi_text = ""
+        if kpis:
+            kpi_text = "\nKey Metrics:\n"
+            for key, value in kpis.items():
+                if isinstance(value, (int, float)):
+                    if "revenue" in key or "profit" in key:
+                        formatted = f"${value:,.0f}"
+                    elif "margin" in key:
+                        formatted = f"{value:.1%}"
+                    else:
+                        formatted = f"{value:,.0f}"
+                else:
+                    formatted = str(value)
+                kpi_text += f"  {key.replace('_', ' ').title()}: {formatted}\n"
+        
+        return f"""
+🤖 Agentic Analyst Results
+
+Your Question: "{question if question else 'General Business Overview'}"
+
+💡 Key Insights:
+{insights}
+{kpi_text}
+A complete JSON file with analysis results is attached to this email.
+
+Agentic Analyst Team
+"""
 
 
 __all__ = ['EmailService']

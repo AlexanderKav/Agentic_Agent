@@ -1,4 +1,3 @@
-# app/api/v1/endpoints/email.py
 import logging
 import os
 from typing import Optional
@@ -30,7 +29,6 @@ class EmailRequest(BaseModel):
     @classmethod
     def validate_email(cls, v: str) -> str:
         """Validate email format."""
-        # Basic validation (EmailStr already does this, but we can add custom logic)
         if not v or '@' not in v:
             raise ValueError('Invalid email address')
         return v
@@ -39,7 +37,7 @@ class EmailRequest(BaseModel):
 @router.post("/send-analysis")
 @limiter.limit("10/minute")
 async def send_analysis(
-    request: Request,  # Added for rate limiting
+    request: Request,
     email_request: EmailRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
@@ -51,9 +49,9 @@ async def send_analysis(
     If analysis_id is provided, sends that specific analysis.
     Otherwise, sends the most recent analysis for the user.
     """
-    # Check if email service is configured
-    if not os.getenv("SMTP_USER") or not os.getenv("SMTP_PASSWORD"):
-        logger.error("Email service not configured - SMTP credentials missing")
+    # 🔥 UPDATED: Check if SendGrid is configured instead of SMTP
+    if not os.getenv("SENDGRID_API_KEY"):
+        logger.error("Email service not configured - SendGrid API key missing")
         raise HTTPException(
             status_code=503,
             detail="Email service not configured. Please contact administrator."
@@ -81,7 +79,6 @@ async def send_analysis(
     # Extract charts from results if they exist
     charts = results_data.get('results', {}).get('charts', {})
     if email_request.include_charts and not charts:
-        # Try to get charts from other locations
         charts = results_data.get('charts', {})
 
     # Send email in background
@@ -106,7 +103,6 @@ async def send_analysis(
     }
 
 
-# Optional: Add a test endpoint for email configuration
 @router.post("/test-email")
 @limiter.limit("3/minute")
 async def test_email(
@@ -116,9 +112,15 @@ async def test_email(
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """Send a test email to verify configuration."""
+    # 🔥 UPDATED: Check if SendGrid is configured
+    if not os.getenv("SENDGRID_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="Email service not configured. Please add SENDGRID_API_KEY."
+        )
+    
     email_service = EmailService()
     
-    # Send test email in background
     background_tasks.add_task(
         email_service.send_analysis_results,
         email_request.to_email,
