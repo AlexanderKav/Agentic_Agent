@@ -86,7 +86,7 @@ Agentic Analyst Team
         return await self._send_via_sendgrid(to_email, "Reset Your Password", content)
 
     async def send_analysis_results(self, to_email: str, question: str, results: dict, charts: dict = None):
-        """Send analysis results email - FIXED KPI FORMATTING"""
+        """Send analysis results email - MATCHING FRONTEND QUALITY"""
         subject = f"Agentic Analyst Results: {question[:40]}..."
         
         # Extract insights
@@ -94,49 +94,87 @@ Agentic Analyst Team
         if isinstance(insights, dict):
             insights = insights.get("human_readable_summary") or insights.get("answer") or str(insights)
         
+        # Extract raw insights for detailed sections
+        raw_insights = results.get("raw_insights", {})
+        supporting_insights = raw_insights.get("supporting_insights", {})
+        key_findings = supporting_insights.get("key_findings", [])
+        anomalies = raw_insights.get("anomalies", {}).get("identified", [])
+        recommendations = raw_insights.get("recommended_metrics", {}).get("next_steps", [])
+        
         # Get KPIs
         kpis = results.get("results", {}).get("kpis", {})
         if not kpis:
             kpis = results.get("kpis", {})
         
-        # Build KPIs text - FIXED FORMATTING
+        # Get forecast details
+        forecast_details = supporting_insights.get("metrics", {}).get("forecast_details", "")
+        
+        # Build Key Findings section
+        findings_text = ""
+        if key_findings:
+            findings_text = "\n\nKey Findings:\n"
+            for finding in key_findings:
+                findings_text += f"  • {finding}\n"
+        
+        # Build KPIs text
         kpi_text = ""
         if kpis:
             kpi_text = "\n\nKey Metrics:\n"
             for key, value in kpis.items():
                 if isinstance(value, (int, float)):
-                    # Handle different KPI types
                     if "margin" in key:
-                        formatted = f"{value:.1%}"  # Percentage
+                        formatted = f"{value:.1%}"
                     elif "revenue" in key or "profit" in key or "cost" in key:
-                        formatted = f"${value:,.0f}"  # Currency
+                        formatted = f"${value:,.0f}"
                     else:
-                        formatted = f"{value:,.0f}"  # Regular number
+                        formatted = f"{value:,.0f}"
                 else:
                     formatted = str(value)
-                
                 label = key.replace('_', ' ').title()
                 kpi_text += f"  • {label}: {formatted}\n"
+        
+        # Add forecast details if available
+        if forecast_details:
+            kpi_text += f"  • Forecast Details: {forecast_details}\n"
+        
+        # Build Anomalies section
+        anomalies_text = ""
+        if anomalies:
+            anomalies_text = "\n\n⚠️ Detected Anomalies:\n"
+            for anomaly in anomalies:
+                anomalies_text += f"  • {anomaly}\n"
+        
+        # Build Recommendations section
+        recommendations_text = ""
+        if recommendations:
+            recommendations_text = "\n\n📊 Recommended Next Steps:\n"
+            for i, step in enumerate(recommendations, 1):
+                recommendations_text += f"  {i}. {step}\n"
         
         # Charts notice
         charts_text = ""
         if charts and len(charts) > 0:
-            charts_text = f"\n\n📎 {len(charts)} chart(s) attached.\n"
+            charts_text = f"\n\n📎 {len(charts)} chart(s) attached to this email.\n"
         
+        # Create the full email content
         content = f"""
-    {'='*50}
-    Agentic Analyst Results
-    {'='*50}
+    {'='*60}
+    🤖 AGENTIC ANALYST - ANALYSIS RESULTS
+    {'='*60}
 
-    Your Question: {question}
+    Your Question: "{question}"
 
-    Key Insights:
+    Analysis Summary:
     {insights}
+    {findings_text}
     {kpi_text}
+    {anomalies_text}
+    {recommendations_text}
     {charts_text}
-    {'='*50}
-    Complete analysis results attached.
+    {'='*60}
+    📎 Complete analysis results attached as JSON file.
 
     Agentic Analyst Team
     """
+        
         return await self._send_via_sendgrid(to_email, subject, content)
