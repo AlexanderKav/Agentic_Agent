@@ -67,7 +67,7 @@ mysql-connector-python==9.6.0
 slowapi>=0.1.9
 pyjwt>=2.9.0
 passlib==1.7.4
-email-validator==2.1.0
+email-validator==2.3.0
 argon2-cffi==23.1.0
 cryptography
 boto3
