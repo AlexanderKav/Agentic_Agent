@@ -345,7 +345,7 @@ docker-compose -f docker/docker-compose.prod.yml down
 docker-compose -f docker/docker-compose.prod.yml down -v
 
 
-### 🛠️ Technology Stack
+## 🛠️ Technology Stack
 
 # Backend
 
