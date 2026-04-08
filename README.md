@@ -268,44 +268,43 @@ Redis (optional, for caching)
 Docker (optional)
 
 # Backend Setup
-bash
 # Clone the repository
-git clone https://github.com/AlexanderKav/agentic-analyst.git
-cd agentic-analyst
+   1. git clone https://github.com/AlexanderKav/agentic-analyst.git
+   2. cd agentic-analyst
 
 # Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+   1. python -m venv venv
+   2. source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+   1. pip install -r requirements.txt
 
 # Copy environment variables
-cp .env.example .env
+   1. cp .env.example .env
 
 # Edit .env with your API keys
-# OPENAI_API_KEY=sk-...
-# SENDGRID_API_KEY=SG...
+   1. OPENAI_API_KEY=sk-...
+   2. SENDGRID_API_KEY=SG...
 
 # Run the backend
-python -m app.main
+   1. python -m app.main
 
 # Frontend Setup
 
 # Navigate to frontend directory
-cd frontend
+   1. cd frontend
 
 # Install dependencies
-npm install
+   2. npm install
 
 # Create environment file
-echo "REACT_APP_API_URL=http://localhost:8000/api/v1" > .env
+   3. echo "REACT_APP_API_URL=http://localhost:8000/api/v1" > .env
 
 # Start the development server
-npm start
+   4. npm start
 
 # Database (optional - SQLite used by default)
-DATABASE_URL=postgresql://user:pass@localhost:5432/agentic_analyst
+   1. DATABASE_URL=postgresql://user:pass@localhost:5432/agentic_analyst
 
 # Security - Generate with: python -c "import secrets; print(secrets.token_hex(32))"
    1. SECRET_KEY=your-secret-key-min-32-chars
