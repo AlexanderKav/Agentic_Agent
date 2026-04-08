@@ -286,9 +286,10 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # Edit .env with your API keys
-# OPENAI_API_KEY=sk-...
-# SENDGRID_API_KEY=SG...
-Database (optional - SQLite used by default)
+OPENAI_API_KEY=sk-...
+SENDGRID_API_KEY=SG...
+
+# Database (optional - SQLite used by default)
 DATABASE_URL=postgresql://user:pass@localhost:5432/agentic_analyst
 
 # Security - Generate with: python -c "import secrets; print(secrets.token_hex(32))"
