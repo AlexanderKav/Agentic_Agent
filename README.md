@@ -301,8 +301,10 @@ SECRETS_MASTER_PASSWORD=your-master-password
 
 # Run the backend
 python -m app.main
+```
 
 ### Frontend Setup
+```bash
 # Navigate to frontend directory
 cd frontend
 
@@ -314,10 +316,10 @@ echo "REACT_APP_API_URL=http://localhost:8000/api/v1" > .env
 
 # Start the development server
 npm start
-
+```
 
 ### Docker Setup
-
+```bash
 # Build and run all services
 docker-compose -f docker/docker-compose.dev.yml up --build
 
@@ -343,7 +345,7 @@ docker-compose -f docker/docker-compose.prod.yml down
 
 # Stop and remove volumes (reset database)
 docker-compose -f docker/docker-compose.prod.yml down -v
-
+``` 
 
 ## 🛠️ Technology Stack
 
