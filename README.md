@@ -23,15 +23,7 @@
 - [💬 Example Questions](#-example-questions)
 - [🔧 Local Development](#-local-development)
 - [🐳 Docker Setup](#-docker-setup)
-- [☁️ Deployment](#️-deployment)
 - [🛠️ Technology Stack](#️-technology-stack)
-- [📁 Project Structure](#-project-structure)
-- [🔐 Security Features](#-security-features)
-- [📈 Monitoring & Observability](#-monitoring--observability)
-- [📊 Performance Metrics](#-performance-metrics)
-- [💰 Cost Analysis](#-cost-analysis)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
 
 ---
 
@@ -108,7 +100,7 @@
 - **Health Checks** - `/health` endpoint for uptime monitoring
 - **Self-Healing** - Automatic failure analysis and recovery suggestions
 
----
+
 
 ## 🎯 Use Cases
 
@@ -197,9 +189,6 @@ WHY THE SCHEMA MAPPER IS CRITICAL FOR BUSINESS USERS:
    Problem: Users need to know what happened to their data.
    Solution: Detailed warnings about unmapped columns and conversion statistics.
 
-THIS IS WHAT MAKES THE PRODUCT "JUST WORK" FOR BUSINESS USERS!
-"""
-
 
 ## 🚀 Quick Start
 
@@ -267,8 +256,6 @@ Connection parameters:
 2. Select the table containing your data
 3. File size limit: 10MB
 
-
-
 # Prerequisites
 Python 3.11+
 
@@ -304,7 +291,6 @@ cp .env.example .env
 python -m app.main
 
 # Frontend Setup
-bash
 
 # Navigate to frontend directory
 cd frontend
@@ -317,11 +303,6 @@ echo "REACT_APP_API_URL=http://localhost:8000/api/v1" > .env
 
 # Start the development server
 npm start
-
-
-# API Keys
-   1. OPENAI_API_KEY=sk-your-openai-api-key
-   2. SENDGRID_API_KEY=SG.your-sendgrid-api-key
 
 # Database (optional - SQLite used by default)
 DATABASE_URL=postgresql://user:pass@localhost:5432/agentic_analyst
