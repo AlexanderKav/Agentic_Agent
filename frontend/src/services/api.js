@@ -73,9 +73,26 @@ export const login = async (username, password) => {
 
 export const getCurrentUser = async () => {
   console.log("🔐 API.getCurrentUser called");
-  const response = await api.get('/auth/me');
-  console.log("✅ API.getCurrentUser response:", response.data?.username);
-  return response.data;
+  const token = localStorage.getItem('token');
+  
+  if (!token) {
+    console.log("⚠️ No token found, returning null");
+    return null;
+  }
+  
+  try {
+    const response = await api.get('/auth/me');
+    console.log("✅ API.getCurrentUser response:", response.data?.username);
+    return response.data;
+  } catch (error) {
+    console.error("❌ API.getCurrentUser error:", error.response?.status);
+    if (error.response?.status === 401) {
+      // Token is invalid, clear it
+      localStorage.removeItem('token');
+      return null;
+    }
+    throw error;
+  }
 };
 
 export const resendVerificationEmail = async (email) => {
