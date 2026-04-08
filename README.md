@@ -1,12 +1,12 @@
 
 # 🤖 Agentic Analyst - AI-Powered Business Intelligence Platform
 
-[![Live Demo](https://img.shields.io/badge/demo-live-green)](https://agentic-analyst.vercel.app)
-[![API Docs](https://img.shields.io/badge/API-docs-blue)](https://agentic-analyst-backend.onrender.com/api/docs)
-[![Tests](https://img.shields.io/badge/tests-48%20passing-brightgreen)]()
-[![Deployed](https://img.shields.io/badge/deployed-Render%20%26%20Vercel-success)]()
-[![Docker](https://img.shields.io/badge/docker-ready-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Live Demo](https://img.shields.io/badge/Live-Demo-green?style=for-the-badge)](https://agentic-analyst.vercel.app)
+[![API Docs](https://img.shields.io/badge/API-Docs-blue?style=for-the-badge)](https://agentic-analyst-backend.onrender.com/api/docs)
+[![Tests](https://img.shields.io/badge/Tests-48%20Passing-brightgreen?style=for-the-badge)](https://github.com/AlexanderKav/agentic-analyst/actions)
+[![Deployed](https://img.shields.io/badge/Deployed-Render%20%26%20Vercel-success?style=for-the-badge)](https://agentic-analyst.vercel.app)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **Agentic Analyst** is an AI-powered business intelligence platform that enables users to analyze business data through natural language conversations. Simply upload your data or connect your database, ask questions in plain English, and get instant insights, forecasts, and visualizations.
 
@@ -22,6 +22,7 @@
 - [Quick Start](#quick-start)
 - [Example of Workflow](#example-of-workflow)
 - [Example Questions](#example-questions)
+- [Data Requirements](#data-requirements)
 - [Local Development](#local-development)
 - [Docker Setup](#docker-setup)
 - [Technology Stack](#technology-stack)
