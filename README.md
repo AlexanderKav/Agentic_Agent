@@ -19,6 +19,7 @@
 - [🎯 Use Cases](#-use-cases)
 - [🏗️ Architecture](#️-architecture)
 - [🚀 Quick Start](#-quick-start)
+- [🚀 Example of Workflow](#-example-of-workflow)
 - [📊 Data Sources](#-data-sources)
 - [💬 Example Questions](#-example-questions)
 - [🔧 Local Development](#-local-development)
@@ -200,9 +201,30 @@ WHY THE SCHEMA MAPPER IS CRITICAL FOR BUSINESS USERS:
 4. **Ask a question** in natural language
 5. **Get insights** with charts and recommendations
 
-## Screenshots of work flow
-
+## Example of Workflow
+   1. User Login
 <img width="1900" height="891" alt="Screenshot 2026-04-08 142745" src="https://github.com/user-attachments/assets/47bd6c44-6041-4c30-bf1a-8cc4f1620c72" />
+
+   2. User decides where to connect business data
+<img width="1884" height="869" alt="image" src="https://github.com/user-attachments/assets/9929edc4-e59c-432c-be10-7002e1d67665" />
+
+   3. User successfully connects data source
+<img width="1877" height="909" alt="image" src="https://github.com/user-attachments/assets/2cb1133b-3dd2-4250-ab37-68efcd03ee22" />
+
+   4. Asks question in relation to data
+<img width="1897" height="709" alt="image" src="https://github.com/user-attachments/assets/cdfde6c4-7c04-40d2-8bc0-2b3e05b5ef0d" />
+
+   5. Example of output
+<img width="1838" height="615" alt="image" src="https://github.com/user-attachments/assets/2b38b952-9f49-4e37-9ea4-a1cc2b87a89a" />
+
+<img width="1851" height="825" alt="image" src="https://github.com/user-attachments/assets/64008467-600f-495b-842a-bc30f15f3029" />
+
+<img width="1851" height="725" alt="image" src="https://github.com/user-attachments/assets/196a5ebd-3b83-4ff9-8504-5502f20e8f83" />
+
+<img width="1874" height="605" alt="image" src="https://github.com/user-attachments/assets/a956ebff-fc8f-4661-bbda-6f8f55807c94" />
+
+
+
 
 
 ### Sample Questions to Try
