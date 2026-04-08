@@ -20,7 +20,6 @@
 - [🏗️ Architecture](#️-architecture)
 - [🚀 Quick Start](#-quick-start)
 - [🚀 Example of Workflow](#-example-of-workflow)
-- [📊 Data Sources](#-data-sources)
 - [💬 Example Questions](#-example-questions)
 - [🔧 Local Development](#-local-development)
 - [🐳 Docker Setup](#-docker-setup)
