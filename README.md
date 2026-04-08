@@ -206,7 +206,7 @@ THIS IS WHAT MAKES THE PRODUCT "JUST WORK" FOR BUSINESS USERS!
 ### For Users (No Installation Required)
 
 1. **Visit:** [https://agentic-analyst.vercel.app](https://agentic-analyst.vercel.app)
-2. **Create an account** (email verification required) or use username: Tester123 password Testpass123
+2. **Create an account** (email verification required) or use username: Tester123 & password: Testpass123
 3. **Upload your data** or connect a database
 4. **Ask a question** in natural language
 5. **Get insights** with charts and recommendations
@@ -244,18 +244,12 @@ Date format: YYYY-MM-DD (or any pandas-parsable format)
 
 Revenue must be numeric
 
-**Required format:**
-```csv
-date,revenue,product,customer,region,quantity,cost
-2024-01-01,10000,Enterprise Plan,Acme Corp,North America,5,5000
-2024-01-02,5000,Premium Plan,Beta LLC,Europe,3,2500
 
 ```Google Sheets
+
 Share your sheet with the service account email: agentic-analyst-bot@agentic-analyst-489012.iam.gserviceaccount.com
 Grant "Viewer" (read-only) access
-
 Enter the Sheet ID (from the URL)
-
 Enter the Sheet/Tab Name (case-sensitive)
 
 ```PostgreSQL / MySQL
@@ -267,7 +261,6 @@ Database: your_database
 Username: your_username
 Password: your_password
 Table: your_table
-Requirements:
 
 ```SQLite
 Upload .db, .sqlite, or .sqlite3 files
