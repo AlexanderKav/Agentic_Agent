@@ -280,7 +280,7 @@ Redis (optional, for caching)
 
 Docker (optional)
 
-Backend Setup
+# Backend Setup
 bash
 # Clone the repository
 git clone https://github.com/AlexanderKav/agentic-analyst.git
@@ -302,8 +302,10 @@ cp .env.example .env
 
 # Run the backend
 python -m app.main
-Frontend Setup
+
+# Frontend Setup
 bash
+
 # Navigate to frontend directory
 cd frontend
 
@@ -318,53 +320,51 @@ npm start
 
 
 # API Keys
-OPENAI_API_KEY=sk-your-openai-api-key
-SENDGRID_API_KEY=SG.your-sendgrid-api-key
+   1. OPENAI_API_KEY=sk-your-openai-api-key
+   2. SENDGRID_API_KEY=SG.your-sendgrid-api-key
 
 # Database (optional - SQLite used by default)
 DATABASE_URL=postgresql://user:pass@localhost:5432/agentic_analyst
 
 # Security - Generate with: python -c "import secrets; print(secrets.token_hex(32))"
-   SECRET_KEY=your-secret-key-min-32-chars
-   AUDIT_SECRET_KEY=your-audit-secret-key
-   DB_ENCRYPTION_KEY=your-encryption-key
-   SECRETS_MASTER_PASSWORD=your-master-password
+   1. SECRET_KEY=your-secret-key-min-32-chars
+   2. AUDIT_SECRET_KEY=your-audit-secret-key
+   3. DB_ENCRYPTION_KEY=your-encryption-key
+   4. SECRETS_MASTER_PASSWORD=your-master-password
 
 # Frontend URL (for email links)
-   FRONTEND_URL=http://localhost:3000
+   1. FRONTEND_URL=http://localhost:3000
 
 
 # 🛠️ Technology Stack
 
 # Backend
 
-   Category	Technologies
-   Framework	FastAPI, Uvicorn
-   Database	PostgreSQL, SQLite, Redis
-   AI/ML	OpenAI GPT-4o-mini, LangChain, Statsmodels (ARIMA), Scikit-learn
-   Data Processing	Pandas, NumPy, SciPy
-   Visualization	Matplotlib, Plotly
-   Authentication	JWT, bcrypt
-   Email	SendGrid API
-   Security	Cryptography, pgcrypto, SlowAPI
-   Async	asyncio, BackgroundTasks
+ 1.  Framework	FastAPI
+ 2.  Database	PostgreSQL, SQLite, Redis
+ 3.  AI/ML	OpenAI GPT-4o-mini, LangChain, Statsmodels (ARIMA), Scikit-learn
+ 4.  Data Processing	Pandas, NumPy, SciPy
+ 5.  Visualization	Matplotlib, Plotly
+ 6.  Authentication	JWT, bcrypt
+ 7   Email	SendGrid API
+ 8.  Security	Cryptography, pgcrypto, SlowAPI
+ 9.  Async	asyncio, BackgroundTasks
 
 # Frontend
 
-   Category	Technologies
-   Framework	React 18
-   UI Library	Material-UI (MUI)
-   HTTP Client	Axios
-   File Upload	React Dropzone
-   Routing	React Router DOM
-   State Management	React Context API
+  1. Framework	React 18
+  2. UI Library	Material-UI (MUI)
+  3. HTTP Client	Axios
+  4. File Upload	React Dropzone
+  5. Routing	React Router DOM
+  6. State Management	React Context API
 
 # DevOps & Infrastructure
 
-   Containerization	Docker, Docker Compose
-   CI/CD	GitHub Actions (7 workflows)
-   Hosting	Vercel (frontend), Render (backend)
-   Database Hosting	Render PostgreSQL
-   Cache	Render Redis (Key Value)
-   Email	SendGrid
-   Monitoring	Custom audit, performance, cost tracking
+   1. Containerization	Docker, Docker Compose
+   2. CI/CD	GitHub Actions (7 workflows)
+   3. Hosting	Vercel (frontend), Render (backend)
+   4. Database Hosting	Render PostgreSQL
+   5. Cache	Render Redis (Key Value)
+   6. Email	SendGrid
+   7. Monitoring	Custom audit, performance, cost tracking
