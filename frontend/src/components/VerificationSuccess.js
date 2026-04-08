@@ -11,7 +11,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api
 const VerificationSuccess = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login } = useAuth(); // ✅ Use login instead of setVerifiedUser
+  const { login } = useAuth();
   const [status, setStatus] = useState('verifying');
   const [message, setMessage] = useState('');
   const hasVerified = useRef(false);
@@ -23,24 +23,32 @@ const VerificationSuccess = () => {
 
       const token = searchParams.get('token');
       
+      console.log('==========================================');
+      console.log('🔍 VERIFICATION PAGE LOADED');
+      console.log('📝 Token from URL:', token);
+      console.log('🌐 API_BASE_URL:', API_BASE_URL);
+      console.log('🔗 Full URL:', `${API_BASE_URL}/auth/verify-email?token=${token}`);
+      console.log('==========================================');
+      
       if (!token) {
+        console.error('❌ No token found in URL');
         setStatus('error');
-        setMessage('No verification token provided');
+        setMessage('No verification token provided. Please check your email link.');
         return;
       }
 
       try {
-        console.log('🔍 Verifying email with token:', token);
-        console.log('🔍 API URL:', API_BASE_URL);
-        
         const response = await axios.get(`${API_BASE_URL}/auth/verify-email?token=${token}`);
         
         console.log('✅ Verification response:', response.data);
+        console.log('   Status:', response.status);
+        console.log('   Has access_token:', !!response.data?.access_token);
+        console.log('   Has user:', !!response.data?.user);
         
         const { access_token, user, message: responseMessage } = response.data;
         
         if (access_token && user) {
-          // ✅ Use the login function from AuthContext
+          console.log('🔐 Logging user in:', user.username);
           login(user, access_token);
           
           setStatus('success');
@@ -50,6 +58,7 @@ const VerificationSuccess = () => {
             navigate('/');
           }, 2000);
         } else {
+          console.log('⚠️ Verification succeeded but no auto-login token provided');
           setStatus('success');
           setMessage(responseMessage || 'Email verified successfully! You can now log in.');
           
@@ -60,23 +69,34 @@ const VerificationSuccess = () => {
         
       } catch (err) {
         console.error('❌ Verification error:', err);
-        console.error('Error response:', err.response?.data);
+        console.error('   Status:', err.response?.status);
+        console.error('   Data:', err.response?.data);
+        console.error('   Message:', err.message);
         
         setStatus('error');
         
-        // Check if the error is actually a success (email already verified)
-        if (err.response?.data?.detail === "Email already verified") {
+        // Handle different error cases
+        if (err.response?.status === 200) {
+          // This shouldn't happen, but if it does, treat as success
+          setStatus('success');
+          setMessage('Email verified successfully! You can now log in.');
+          setTimeout(() => {
+            navigate('/login');
+          }, 2000);
+        } else if (err.response?.data?.detail === "Email already verified") {
           setStatus('success');
           setMessage('Email already verified! You can now log in.');
           setTimeout(() => {
             navigate('/login');
           }, 2000);
         } else if (err.response?.status === 400) {
-          setMessage(err.response?.data?.detail || 'Invalid or expired verification token');
+          setMessage(err.response?.data?.detail || 'Invalid or expired verification token. Please request a new one.');
         } else if (err.response?.status === 404) {
-          setMessage('User not found');
+          setMessage('User not found. Please register again.');
+        } else if (err.code === 'ERR_NETWORK') {
+          setMessage('Network error. Please check your connection and try again.');
         } else {
-          setMessage(err.response?.data?.detail || 'Verification failed. Please try again.');
+          setMessage(err.response?.data?.detail || 'Verification failed. Please try again or request a new link.');
         }
       }
     };
@@ -120,9 +140,18 @@ const VerificationSuccess = () => {
             </Button>
             <Button 
               variant="contained" 
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                // Resend verification email
+                const email = localStorage.getItem('pendingVerificationEmail');
+                if (email) {
+                  // Call resend endpoint
+                  axios.post(`${API_BASE_URL}/auth/resend-verification`, { email })
+                    .then(() => alert('Verification email resent!'))
+                    .catch(() => alert('Failed to resend email'));
+                }
+              }}
             >
-              Try Again
+              Resend Email
             </Button>
           </Box>
         </Paper>

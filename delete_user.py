@@ -7,7 +7,7 @@ BASE_URL = "https://agentic-analyst-backend.onrender.com/api/v1"
 def login(username, password):
     response = requests.post(
         f"{BASE_URL}/auth/login",
-        data={"username": "testuser123", "password": "Testpass123"}
+        data={"username": "Testuser123", "password": "Testpass123"}
     )
     response.raise_for_status()
     return response.json()["access_token"]
@@ -44,4 +44,4 @@ if __name__ == "__main__":
     # result = delete_user(token, "testuser123")
     
     # Option 2: Direct database connection
-    delete_user_via_db("testuser123")
+    delete_user_via_db("Testuser123")
