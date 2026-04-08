@@ -24,7 +24,6 @@
 - [Example Questions](#example-questions)
 - [Data Requirements](#data-requirements)
 - [Local Development](#local-development)
-- [Docker Setup](#docker-setup)
 - [Technology Stack](#technology-stack)
 
 ---
