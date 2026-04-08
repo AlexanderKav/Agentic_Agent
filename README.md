@@ -170,7 +170,7 @@ This module solves a fundamental real-world problem that every business analyst 
 ### For Users (No Installation Required)
 
 1. **Visit:** [https://agentic-analyst.vercel.app](https://agentic-analyst.vercel.app)
-2. **Direct Download:** [test_files.zip](https://github.com/AlexanderKav/agentic-analyst/raw/main/test_files.zip)
+2. **Direct Download:** Test valid and/or invalid data sources [test_files.zip](https://github.com/AlexanderKav/agentic-analyst/raw/main/test_files.zip)
 3. **Create an account** (email verification required) or use username: `Tester123` & password: `Testpass123`
 4. **Upload your data** or connect a database
 5. **Ask a question** in natural language
