@@ -1,3 +1,4 @@
+
 # 🤖 Agentic Analyst - AI-Powered Business Intelligence Platform
 
 [![Live Demo](https://img.shields.io/badge/demo-live-green)](https://agentic-analyst.vercel.app)
@@ -15,19 +16,19 @@
 
 ## 📋 Table of Contents
 
-- [✨ Features](#-features)
-- [🎯 Use Cases](#-use-cases)
-- [🏗️ Architecture](#️-architecture)
-- [🚀 Quick Start](#-quick-start)
-- [🚀 Example of Workflow](#-example-of-workflow)
-- [💬 Example Questions](#-example-questions)
-- [🔧 Local Development](#-local-development)
-- [🐳 Docker Setup](#-docker-setup)
-- [🛠️ Technology Stack](#️-technology-stack)
+- [Features](#features)
+- [Use Cases](#use-cases)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Example of Workflow](#example-of-workflow)
+- [Example Questions](#example-questions)
+- [Local Development](#local-development)
+- [Docker Setup](#docker-setup)
+- [Technology Stack](#technology-stack)
 
 ---
 
-## ✨ Features
+## Features
 
 ### 🔌 Multi-Source Data Integration
 
@@ -100,9 +101,9 @@
 - **Health Checks** - `/health` endpoint for uptime monitoring
 - **Self-Healing** - Automatic failure analysis and recovery suggestions
 
+---
 
-
-## 🎯 Use Cases
+## Use Cases
 
 ### 📊 Sales Analysis
 > *"Show me revenue by product for the last quarter"*
@@ -136,9 +137,10 @@ Get detailed product performance analysis with revenue trends, anomalies, and ac
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ### Multi-Agent AI System
+
 | Agent | Responsibility |
 |-------|----------------|
 | **Question Classifier** | Classifies question type, extracts time periods, determines relevance |
@@ -147,73 +149,72 @@ Get detailed product performance analysis with revenue trends, anomalies, and ac
 | **Insight Agent** | Generates LLM-powered insights and recommendations |
 | **Visualization Agent** | Creates charts and visualizations |
 
-Schema Mapper - Maps raw dataframe columns to standard schema with currency conversion
+### Schema Mapper - Critical Business Feature
 
-CRITICAL BUSINESS FEATURE: This module solves a fundamental real-world problem that every 
-business analyst faces - data from different sources never has the same column names!
+This module solves a fundamental real-world problem that every business analyst faces - data from different sources never has the same column names!
 
-Example: One customer exports "Transaction Date", another uses "sale_date", a third uses 
-"created_at". Without this mapper, the AI would fail to understand any of them. With this 
-mapper, ALL work seamlessly.
+**Example:** One customer exports "Transaction Date", another uses "sale_date", a third uses "created_at". Without this mapper, the AI would fail to understand any of them. With this mapper, ALL work seamlessly.
 
-This is what makes the platform truly "plug and play" - users don't need to rename their 
-columns or follow any specific format. They just upload their data and start asking questions.
+**Why the Schema Mapper is Critical:**
 
-WHY THE SCHEMA MAPPER IS CRITICAL FOR BUSINESS USERS:
+1. **NO COLUMN RENAMING REQUIRED** - "Transaction Date", "sale_date", "order_date" → ALL map to "date"
+2. **MULTI-CURRENCY SUPPORT** - €100 + £100 + $100 → All normalized to USD
+3. **INTERNATIONAL NUMBER FORMATS** - Handles both US (1,234.56) and European (1.234,56) formats
+4. **FUZZY MATCHING** - Finds "Transactin Date" when user meant "Transaction Date"
+5. **EXTENSIBLE** - Add custom mappings without changing core code
+6. **CLEAR FEEDBACK** - Detailed warnings about unmapped columns and conversion statistics
 
-1. NO COLUMN RENAMING REQUIRED
-   Problem: Business users don't want to rename columns before uploading.
-   Solution: SchemaMapper automatically figures out what each column represents.
-   
-   Example: "Transaction Date", "sale_date", "order_date" → ALL map to "date"
+---
 
-2. MULTI-CURRENCY SUPPORT
-   Problem: International businesses deal with multiple currencies.
-   Solution: Automatically converts all revenue to USD for consistent analysis.
-   
-   Example: €100 + £100 + $100 → All normalized to USD
-
-3. INTERNATIONAL NUMBER FORMATS
-   Problem: Different countries use different number formats.
-   Solution: Handles both US (1,234.56) and European (1.234,56) formats.
-
-4. FUZZY MATCHING
-   Problem: Typos and variations in column names.
-   Solution: Fuzzy matching finds "Transactin Date" when user meant "Transaction Date"
-
-5. EXTENSIBLE
-   Problem: Every business has unique column names.
-   Solution: Add custom mappings without changing core code.
-
-6. CLEAR FEEDBACK
-   Problem: Users need to know what happened to their data.
-   Solution: Detailed warnings about unmapped columns and conversion statistics.
-
-
-## 🚀 Quick Start
+## Quick Start
 
 ### For Users (No Installation Required)
 
 1. **Visit:** [https://agentic-analyst.vercel.app](https://agentic-analyst.vercel.app)
-2. **Create an account** (email verification required) or use username: Tester123 & password: Testpass123
+2. **Create an account** (email verification required) or use username: `Tester123` & password: `Testpass123`
 3. **Upload your data** or connect a database
 4. **Ask a question** in natural language
 5. **Get insights** with charts and recommendations
 
+### Sample Questions to Try
+
+**📊 Revenue Analysis:**
+- "Show me revenue by product"
+- "What are the sales trends over time?"
+- "Which customers generate the most revenue?"
+
+**🔮 Forecasting:**
+- "Forecast revenue for next quarter"
+- "What is most likely to be the most successful product for Q1 2025?"
+- "Predict revenue for next 6 months"
+
+**⚠️ Risk Detection:**
+- "Detect anomalies in the data"
+- "Are there any unusual patterns?"
+- "Show me revenue spikes"
+
+**📈 Performance:**
+- "How is the business performing?"
+- "What are the risks in our data?"
+- "Give me an overview"
+
+---
+
 ## Example of Workflow
-   1. User Login
+
+### 1. User Login
 <img width="1900" height="891" alt="Screenshot 2026-04-08 142745" src="https://github.com/user-attachments/assets/47bd6c44-6041-4c30-bf1a-8cc4f1620c72" />
 
-   2. User decides where to connect business data
+### 2. User decides where to connect business data
 <img width="1884" height="869" alt="image" src="https://github.com/user-attachments/assets/9929edc4-e59c-432c-be10-7002e1d67665" />
 
-   3. User successfully connects data source
+### 3. User successfully connects data source
 <img width="1877" height="909" alt="image" src="https://github.com/user-attachments/assets/2cb1133b-3dd2-4250-ab37-68efcd03ee22" />
 
-   4. Asks question in relation to data
+### 4. Asks question in relation to data
 <img width="1897" height="709" alt="image" src="https://github.com/user-attachments/assets/cdfde6c4-7c04-40d2-8bc0-2b3e05b5ef0d" />
 
-   5. Example of output
+### 5. Example of output
 <img width="1838" height="615" alt="image" src="https://github.com/user-attachments/assets/2b38b952-9f49-4e37-9ea4-a1cc2b87a89a" />
 
 <img width="1851" height="825" alt="image" src="https://github.com/user-attachments/assets/64008467-600f-495b-842a-bc30f15f3029" />
@@ -222,65 +223,42 @@ WHY THE SCHEMA MAPPER IS CRITICAL FOR BUSINESS USERS:
 
 <img width="1874" height="605" alt="image" src="https://github.com/user-attachments/assets/a956ebff-fc8f-4661-bbda-6f8f55807c94" />
 
+---
 
+## Example Questions
 
+See the [Sample Questions to Try](#sample-questions-to-try) section above.
 
+### Data Requirements
 
-### Sample Questions to Try
+- Must contain at least `date` and `revenue` columns (case-insensitive)
+- Minimum 5 rows, maximum 100,000 rows
+- Date format: YYYY-MM-DD (or any pandas-parsable format)
+- Revenue must be numeric
 
-📊 Revenue Analysis:
-• "Show me revenue by product"
-• "What are the sales trends over time?"
-• "Which customers generate the most revenue?"
+### Google Sheets Connection
 
-🔮 Forecasting:
-• "Forecast revenue for next quarter"
-• "What is most likely to be the most successful product for Q1 2025?"
-• "Predict revenue for next 6 months"
-
-⚠️ Risk Detection:
-• "Detect anomalies in the data"
-• "Are there any unusual patterns?"
-• "Show me revenue spikes"
-
-📈 Performance:
-• "How is the business performing?"
-• "What are the risks in our data?"
-• "Give me an overview"
-
-
-# Requirements:
-
-Must contain at least date and revenue columns (case-insensitive)
-
-Minimum 5 rows, maximum 100,000 rows
-
-Date format: YYYY-MM-DD (or any pandas-parsable format)
-
-Revenue must be numeric
-
-# Google Sheets
-
-1. Share your sheet with the service account email: agentic-analyst-bot@agentic-analyst-489012.iam.gserviceaccount.com
+1. Share your sheet with the service account email: `agentic-analyst-bot@agentic-analyst-489012.iam.gserviceaccount.com`
 2. Grant "Viewer" (read-only) access
 3. Enter the Sheet ID (from the URL)
 4. Enter the Sheet/Tab Name (case-sensitive)
 
-# PostgreSQL / MySQL
+### PostgreSQL / MySQL Connection
 
 Connection parameters:
-1. Host: your-db-host.com
-2. Port: 5432 (PostgreSQL) / 3306 (MySQL)
-3. Database: your_database
-4. Username: your_username
-5. Password: your_password
-6. Table: your_table
+- **Host:** your-db-host.com
+- **Port:** 5432 (PostgreSQL) / 3306 (MySQL)
+- **Database:** your_database
+- **Username:** your_username
+- **Password:** your_password
+- **Table:** your_table
 
-# SQLite
+### SQLite Connection
 
-1. Upload .db, .sqlite, or .sqlite3 files
+1. Upload `.db`, `.sqlite`, or `.sqlite3` files
 2. Select the table containing your data
 3. File size limit: 10MB
+
 
 # Prerequisites
 Python 3.11+
