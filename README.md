@@ -75,7 +75,6 @@
 ### 📧 Email Reporting
 
 - **Analysis Results** - Send reports to any email address
-- **Beautiful HTML Templates** - Professional email design
 - **JSON Attachments** - Complete raw results
 - **Chart Attachments** - PNG images included
 - **Test Endpoint** - Verify email configuration
