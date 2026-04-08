@@ -1,4 +1,3 @@
-
 # 🤖 Agentic Analyst - AI-Powered Business Intelligence Platform
 
 [![Live Demo](https://img.shields.io/badge/Live-Demo-green?style=for-the-badge)](https://agentic-analyst.vercel.app)
